@@ -62,7 +62,7 @@ def compare_and_not_query(retriever, corpus, queries, qrels):
     new_ndcg2, new_map2, new_recall2, new_precision2 = retriever.evaluate({"8": qrels["8"]}, {"8": new_merged_resuts2}, retriever.k_values)
     
      
-def compare_query_weather(retriever, corpus, queries, qrels):
+def compare_query_weather_example(retriever, corpus, queries, qrels):
     # retriever.top_k = 2500
     
     results = retriever.retrieve(corpus, {"2": queries["2"], "3": queries["2"]})
@@ -202,7 +202,7 @@ retriever = EvaluateRetrieval(model, score_function="cos_sim") # or "cos_sim" fo
 # compare_query_social_distance(retriever, corpus, queries, qrels)
 
 compare_ace_example(retriever, corpus, queries, qrels)
-# compare_query_weather(retriever, corpus, queries, qrels)
+# compare_query_weather_example(retriever, corpus, queries, qrels)
 # compare_and_not_query(retriever, corpus, queries, qrels)
 
 # results = retriever.retrieve(corpus, {"2": queries["2"], "3": queries["2"]})
