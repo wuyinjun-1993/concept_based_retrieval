@@ -136,20 +136,25 @@ def compare_query_social_distance(retriever, corpus, queries, qrels):
 def decompose_queries(model, tokenizer, queries):
     prompts = []
     names = []
+    all_queries = []
     for name, q in queries.items():
         names.append(name)
+        all_queries.append(q)
         prompts.append(f"""Decompose the query into a conjunction of keywords and phrases.
 Query: Are patients taking Angiotensin-converting enzyme inhibitors (ACE) at increased risk for COVID-19?
-Answer: Are patients taking Angiotensin-converting enzyme inhibitors (ACE), increased risk for COVID-19
+Answer: Angiotensin-converting enzyme inhibitors (ACE), increased risk COVID-19
 
 Query: What probe is used in oligonucleotide microarrays?
-Answer: probe is used, oligonucleotide microarrays
+Answer: probe used, oligonucleotide microarrays
 
 Query: Has social distancing had an impact on slowing the spread of COVID-19?
-Answer: Has social distancing, impact on slowing, the spread of COVID-19
+Answer: social distancing, slowing the spread of COVID-19
 
 Query: What happens if indian government stole kohinoor diamonds?
-Answer: What happens, indian government stole, kohinoor diamonds
+Answer: indian government stole, kohinoor diamonds
+
+Query: How long after resection should you take to return to the hospital?
+Answer: return to hospital, resection
 
 Query: {q}
 Answer:""")
@@ -159,71 +164,29 @@ Answer:""")
         inputs = tokenizer(prompts[batch:batch+batch_size], return_tensors="pt", padding=True, truncation=True)
 
         # Generate
-        generate_ids = model.generate(inputs.input_ids.to("cuda"), max_new_tokens=30)
+        generate_ids = model.generate(inputs.input_ids.to("cuda"), max_new_tokens=20)
         res = tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
-        for r, p, name in zip(res, prompts[batch:batch+batch_size], names[batch:batch+batch_size]):
+        for r, p, q, name in zip(res, prompts[batch:batch+batch_size], all_queries[batch:batch+batch_size], names[batch:batch+batch_size]):
             out_line = r[len(p):].split("\n")[0]
             parse_out = out_line[1:].split(", ")
-            out[name] = parse_out
+            out[name] = parse_out + [q]
     return out
     
 def compare_ace_example(model, tokenizer, retriever, corpus, queries, qrels):
     # retriever.top_k = 2500
     
     q1 = list(queries.keys())
-    print(q1)
     # q1 = q1[0]
     # print("Query:", queries[q1], "GT:", qrels[q1])
-    # results = retriever.retrieve(corpus, {q1: queries[q1]})
-    
-    # print("query::", queries[q1])
+    # print("results without decomposition::")
+    # results = retriever.retrieve(corpus, queries)
+    # ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values)
 
-    # print("length of the results::", len(results))
-
-    print("results without decomposition::")
-
-    # ndcg, _map, recall, precision = retriever.evaluate({q1: qrels[q1]}, results, retriever.k_values)
-
-    # retriever.top_k = 1000
-
+    print("results with decomposition::")
     decomp = decompose_queries(model, tokenizer, queries)
     print(decomp)
     new_results = retriever.retrieve(corpus, decomp)
-    # print(new_results)
-
-    #### Evaluate your model with NDCG@k, MAP@K, Recall@K and Precision@K  where k = [1,3,5,10,100,1000] 
-    
-
-    # new_merged_resuts = intersect_res(new_results)
-    # print(new_merged_resuts)
-
-    #print("length of the merged results::", len(new_merged_resuts))
-
-    # print("results with decomposition::")
-
-    # new_ndcg, new_map, new_recall, new_precision = retriever.evaluate({"20": qrels["20"]}, {"20": new_merged_resuts}, retriever.k_values)
-    
-    # new_results = retriever.retrieve(corpus, {"20": ["patients", "Angiotensin-converting enzyme inhibitors", "increased risk", "COVID-19"]})
-
-    #### Evaluate your model with NDCG@k, MAP@K, Recall@K and Precision@K  where k = [1,3,5,10,100,1000] 
-    
-
-    # new_merged_resuts = intersect_res(new_results)
-
-    # print("length of the merged results 2::", len(new_merged_resuts))
-
-    # print("results with decomposition 2::")
-
     new_ndcg, new_map, new_recall, new_precision = retriever.evaluate(qrels, new_results, retriever.k_values)
-    # new_results2 = retriever.retrieve(corpus, {"2": ["weather", "coronaviruses"]})    
-    
-    # new_merged_resuts2 = intersect_res(new_results2)
-
-    # print("length of the merged results::", len(new_merged_resuts2))
-
-    # print("results with decomposition 2::")
-
-    # new_ndcg2, new_map2, new_recall2, new_precision2 = retriever.evaluate({"2": qrels["2"], "3":qrels["2"]}, {"2": new_merged_resuts2, "3":new_merged_resuts2}, retriever.k_values)
     
 
 #### Just some code to print debug information to stdout
@@ -251,6 +214,9 @@ llama = AutoModelForCausalLM.from_pretrained("huggyllama/llama-7b", device_map="
 
 #### Provide the data_path where scifact has been downloaded and unzipped
 corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")
+keys = list(queries.keys())
+queries = {k: queries[k] for k in keys[:50]}
+qrels = {k: qrels[k] for k in keys[:50]}
 
 #### Load the SBERT model and retrieve using cosine-similarity
 model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
