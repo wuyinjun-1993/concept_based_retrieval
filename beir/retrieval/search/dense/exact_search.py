@@ -26,7 +26,7 @@ class DenseRetrievalExactSearch:
                top_k: List[int], 
                score_function: str,
                return_sorted: bool = False, 
-               query_negations: List=None,
+               query_negations: List=None, all_sub_corpus_embedding_ls=None,
                **kwargs) -> Dict[str, Dict[str, float]]:
         #Create embeddings for all queries using model.encode_queries()
         #Runs semantic search against the corpus embeddings
@@ -66,17 +66,23 @@ class DenseRetrievalExactSearch:
         itr = range(0, len(corpus), self.corpus_chunk_size)
 
         all_cos_scores = []
-        for batch_num, corpus_start_idx in enumerate(itr):
-            logger.info("Encoding Batch {}/{}...".format(batch_num+1, len(itr)))
-            corpus_end_idx = min(corpus_start_idx + self.corpus_chunk_size, len(corpus))
+        if all_sub_corpus_embedding_ls is None:
+            all_sub_corpus_embedding_ls = []
+            for batch_num, corpus_start_idx in enumerate(itr):
+                logger.info("Encoding Batch {}/{}...".format(batch_num+1, len(itr)))
+                corpus_end_idx = min(corpus_start_idx + self.corpus_chunk_size, len(corpus))
 
-            #Encode chunk of corpus    
-            sub_corpus_embeddings = self.model.encode_corpus(
-                corpus[corpus_start_idx:corpus_end_idx],
-                batch_size=self.batch_size,
-                show_progress_bar=self.show_progress_bar, 
-                convert_to_tensor = self.convert_to_tensor
-                )
+                #Encode chunk of corpus    
+                sub_corpus_embeddings = self.model.encode_corpus(
+                    corpus[corpus_start_idx:corpus_end_idx],
+                    batch_size=self.batch_size,
+                    show_progress_bar=self.show_progress_bar, 
+                    convert_to_tensor = self.convert_to_tensor
+                    )
+                
+                all_sub_corpus_embedding_ls.append(sub_corpus_embeddings)
+        
+        for sub_corpus_embeddings in all_sub_corpus_embedding_ls:
 
             #Compute similarites using either cosine-similarity or dot product
             cos_scores = []
@@ -117,4 +123,4 @@ class DenseRetrievalExactSearch:
                 if corpus_id != query_id:
                     self.results[query_id][corpus_id] = score
         
-        return self.results 
+        return self.results, all_sub_corpus_embedding_ls
