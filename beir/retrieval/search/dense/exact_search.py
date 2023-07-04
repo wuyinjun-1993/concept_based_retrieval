@@ -50,9 +50,12 @@ class DenseRetrievalExactSearch:
             elif type(curr_query) is list:
                 curr_query_embedding = []
                 for k in range(len(curr_query)):
-                    qe = self.model.encode_queries(
-                        curr_query[k], batch_size=self.batch_size, show_progress_bar=self.show_progress_bar, convert_to_tensor=self.convert_to_tensor)
-                    curr_query_embedding.append(qe)
+                    curr_conjunct = []
+                    for j in range(len(curr_query[k])):
+                        qe = self.model.encode_queries(
+                            curr_query[k][j], batch_size=self.batch_size, show_progress_bar=self.show_progress_bar, convert_to_tensor=self.convert_to_tensor)
+                        curr_conjunct.append(qe)
+                    curr_query_embedding.append(curr_conjunct)
             query_embeddings.append(curr_query_embedding)
           
         logger.info("Sorting Corpus by document length (Longest first)...")
@@ -89,24 +92,24 @@ class DenseRetrievalExactSearch:
             for query_itr in range(len(query_embeddings)):
                 curr_query_embedding = query_embeddings[query_itr]
                 if type(curr_query_embedding) is list:
-                    curr_cos_scores_ls = self.score_functions[score_function](torch.stack(curr_query_embedding), sub_corpus_embeddings)
-                    if query_negations is not None and query_negations[query_itr] is not None:
-                        curr_query_negations = torch.tensor(query_negations[query_itr])
-                        curr_cos_scores_ls[curr_query_negations == 1] =  - curr_cos_scores_ls[curr_query_negations == 1]
-                    
-                    curr_cos_scores_ls[torch.isnan(curr_cos_scores_ls)] = -1
-                    
-                    curr_cos_scores = 1
-                    for idx in range(len(curr_cos_scores_ls)):
-                        curr_cos_scores *= curr_cos_scores_ls[idx]
-                    
-                    
+                    curr_scores = 0
+                    for conj_id in range(len(curr_query_embedding)):
+                        curr_cos_scores_ls = self.score_functions[score_function](torch.stack(curr_query_embedding[conj_id]), sub_corpus_embeddings)
+                        if query_negations is not None and query_negations[query_itr] is not None:
+                            curr_query_negations = torch.tensor(query_negations[query_itr])
+                            curr_cos_scores_ls[curr_query_negations == 1] =  - curr_cos_scores_ls[curr_query_negations == 1]
+
+                        curr_cos_scores_ls[torch.isnan(curr_cos_scores_ls)] = -1
+
+                        curr_cos_scores = 1
+                        for idx in range(len(curr_cos_scores_ls)):
+                            curr_cos_scores *= curr_cos_scores_ls[idx]
+                        curr_scores += curr_cos_scores
                 else:
                     curr_cos_scores = self.score_functions[score_function](curr_query_embedding.unsqueeze(0), sub_corpus_embeddings)
                     curr_cos_scores[torch.isnan(curr_cos_scores)] = -1
-                    curr_cos_scores = curr_cos_scores.squeeze(0)
-                    
-                cos_scores.append(curr_cos_scores)
+                    curr_scores = curr_cos_scores.squeeze(0)
+                cos_scores.append(curr_scores)
             cos_scores = torch.stack(cos_scores)
             all_cos_scores.append(cos_scores)
         
