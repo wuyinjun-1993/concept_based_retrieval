@@ -140,9 +140,9 @@ def decompose_queries(model, tokenizer, queries):
     for name, q in queries.items():
         names.append(name)
         all_queries.append(q)
-        prompts.append(f"""Decompose the query into a conjunction of keywords and phrases.
+        prompts.append(f"""Decompose the query into a disjunction of conjunctions of keywords and phrases.
 Query: Are patients taking Angiotensin-converting enzyme inhibitors (ACE) at increased risk for COVID-19?
-Answer: Angiotensin-converting enzyme inhibitors (ACE), increased risk COVID-19
+Answer: Angiotensin-converting enzyme inhibitors (ACE); increased risk for COVID-19
 
 Query: What probe is used in oligonucleotide microarrays?
 Answer: probe used, oligonucleotide microarrays
@@ -151,10 +151,10 @@ Query: Has social distancing had an impact on slowing the spread of COVID-19?
 Answer: social distancing, slowing the spread of COVID-19
 
 Query: What happens if indian government stole kohinoor diamonds?
-Answer: indian government stole, kohinoor diamonds
+Answer: stole kohinoor diamonds; indian government, stole kohinoor diamonds
 
 Query: How long after resection should you take to return to the hospital?
-Answer: return to hospital, resection
+Answer: return to hospital, wait after resection; resection
 
 Query: {q}
 Answer:""")
@@ -168,8 +168,8 @@ Answer:""")
         res = tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)
         for r, p, q, name in zip(res, prompts[batch:batch+batch_size], all_queries[batch:batch+batch_size], names[batch:batch+batch_size]):
             out_line = r[len(p):].split("\n")[0]
-            parse_out = out_line[1:].split(", ")
-            out[name] = parse_out + [q]
+            parse_out = out_line[1:].split("; ")
+            out[name] = [disjunct.split(", ") for disjunct in parse_out] + [[q]]
     return out
     
 def compare_ace_example(model, tokenizer, retriever, corpus, queries, qrels):
@@ -179,7 +179,7 @@ def compare_ace_example(model, tokenizer, retriever, corpus, queries, qrels):
     # q1 = q1[0]
     # print("Query:", queries[q1], "GT:", qrels[q1])
     # print("results without decomposition::")
-    # results = retriever.retrieve(corpus, queries)
+    # results = retriever.retrieve(corpus, {k: [[v]] for k, v in queries.items()})
     # ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values)
 
     print("results with decomposition::")
@@ -214,9 +214,9 @@ llama = AutoModelForCausalLM.from_pretrained("huggyllama/llama-7b", device_map="
 
 #### Provide the data_path where scifact has been downloaded and unzipped
 corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")
-keys = list(queries.keys())
-queries = {k: queries[k] for k in keys[:50]}
-qrels = {k: qrels[k] for k in keys[:50]}
+# keys = list(queries.keys())
+# queries = {k: queries[k] for k in keys[-50:]}
+# qrels = {k: qrels[k] for k in keys[-50:]}
 
 #### Load the SBERT model and retrieve using cosine-similarity
 model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
