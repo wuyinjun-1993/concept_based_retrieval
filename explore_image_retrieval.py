@@ -129,7 +129,7 @@ def retrieve_by_full_query(img_emb, text_emb_ls):
 def parse_args():
     parser = argparse.ArgumentParser(description='CUB concept learning')
     parser.add_argument('--data_path', type=str, default="/data6/wuyinjun/", help='config file')
-    parser.add_argument('--dataset_name', type=str, default="flickr", help='config file')
+    parser.add_argument('--dataset_name', type=str, default="crepe", help='config file')
     parser.add_argument('--query_count', type=int, default=-1, help='config file')
     parser.add_argument('--query_concept', action="store_true", help='config file')
     parser.add_argument('--img_concept', action="store_true", help='config file')
@@ -177,6 +177,8 @@ if __name__ == "__main__":
     
     full_data_path = os.path.join(args.data_path, args.dataset_name)
     
+    query_path = os.path.dirname(os.path.realpath(__file__))
+    
     if not os.path.exists(full_data_path):
         os.makedirs(full_data_path)
     
@@ -189,8 +191,8 @@ if __name__ == "__main__":
         load_atom_datasets(full_data_path)
     
     elif args.dataset_name == "crepe":
-        queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path)
-        img_idx_ls, raw_img_ls = load_other_crepe_images(full_data_path, img_idx_ls, raw_img_ls)
+        queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
+        img_idx_ls, raw_img_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, raw_img_ls)
         
     elif args.dataset_name == "trec-covid":
         url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(args.dataset_name)

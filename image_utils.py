@@ -51,8 +51,8 @@ def load_atom_datasets(data_path):
     
     # selected_dataset = filter_atom_images_by_langs(dataset)
     
-def load_crepe_datasets(data_path):
-    img_caption_file_name= os.path.join(data_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
+def load_crepe_datasets(data_path, query_path):
+    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
 
     img_folder = os.path.join(data_path, "VG_100K/")
     img_folder2 = os.path.join(data_path, "VG_100K_2/")
@@ -85,9 +85,9 @@ def load_crepe_datasets(data_path):
         sub_caption_ls.append(sub_captions)
     return caption_ls, img_ls, sub_caption_ls, img_idx_ls
 
-def load_other_crepe_images(data_path, img_idx_ls, img_ls, total_count=500):
+def load_other_crepe_images(data_path, query_path, img_idx_ls, img_ls, total_count=500):
     
-    img_caption_file_name= os.path.join(data_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
+    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
     img_folder = os.path.join(data_path, "VG_100K/")
     img_folder2 = os.path.join(data_path, "VG_100K_2/")
 
