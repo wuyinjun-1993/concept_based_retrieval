@@ -6,3 +6,4 @@ from .bpr import BinarySentenceBERT
 from .unicoil import UniCOIL
 from .splade import SPLADE
 from .tldr import TLDR
+from .clip_model import clip_model

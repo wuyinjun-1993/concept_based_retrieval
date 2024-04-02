@@ -3,8 +3,9 @@ from beir.retrieval import models
 from beir.datasets.data_loader import GenericDataLoader
 from beir.retrieval.evaluation import EvaluateRetrieval
 from beir.retrieval.search.dense import DenseRetrievalExactSearch as DRES
+from transformers import CLIPModel, AutoProcessor
 
-
+from retrieval_utils import *
 import logging
 import pathlib, os
 import os, sys
@@ -14,38 +15,38 @@ import json
 from tqdm import tqdm
 import torch
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def obtain_key_words(query):
-    response = openai.Completion.create(
-        model="text-davinci-003",
-        prompt="Can you show me the keywords of the following sentence? Please return the list of keywords separated with commas. \"" + query + "\"",
-        temperature=1,
-        max_tokens=256,
-        top_p=1,
-        frequency_penalty=0,
-        presence_penalty=0
-        )
-    kw_ls = response["choices"][0]["text"].split(",")
-    res_kw_ls = []
-    for kw in kw_ls:
-        res_kw_ls.append(kw.strip())
+# def obtain_key_words(query):
+#     response = openai.Completion.create(
+#         model="text-davinci-003",
+#         prompt="Can you show me the keywords of the following sentence? Please return the list of keywords separated with commas. \"" + query + "\"",
+#         temperature=1,
+#         max_tokens=256,
+#         top_p=1,
+#         frequency_penalty=0,
+#         presence_penalty=0
+#         )
+#     kw_ls = response["choices"][0]["text"].split(",")
+#     res_kw_ls = []
+#     for kw in kw_ls:
+#         res_kw_ls.append(kw.strip())
     
-    return res_kw_ls
+#     return res_kw_ls
 
-def intersect_res(results):
-    intersect_keys = set(results[list(results.keys())[0]].keys())
-    for idx in range(len(list(results.keys()))-1):
-        intersect_keys = intersect_keys.intersection(set(results[list(results.keys())[idx + 1]].keys()))
+# def intersect_res(results):
+#     intersect_keys = set(results[list(results.keys())[0]].keys())
+#     for idx in range(len(list(results.keys()))-1):
+#         intersect_keys = intersect_keys.intersection(set(results[list(results.keys())[idx + 1]].keys()))
         
-    intersect_res = {}
-    for key in intersect_keys:
-        score = 1
-        for idx in range(len(list(results.keys()))):
-            score = score*results[list(results.keys())[idx]][key]/100
-        intersect_res[key] = score*100
+#     intersect_res = {}
+#     for key in intersect_keys:
+#         score = 1
+#         for idx in range(len(list(results.keys()))):
+#             score = score*results[list(results.keys())[idx]][key]/100
+#         intersect_res[key] = score*100
         
-    return intersect_res
+#     return intersect_res
 
 
 def compare_and_not_query(retriever, corpus, queries, qrels):
@@ -295,7 +296,7 @@ def compare_ace_example(retriever, corpus, queries, qrels):
 
     # new_ndcg2, new_map2, new_recall2, new_precision2 = retriever.evaluate({"2": qrels["2"], "3":qrels["2"]}, {"2": new_merged_resuts2, "3":new_merged_resuts2}, retriever.k_values)
 
-def evaluate_for_single_query(qrels, results):
+def evaluate_for_query_batches(qrels, results):
     all_results = dict()    
     for key in tqdm(results):
         ndcg, _map, recall, precision = retriever.evaluate({key: qrels[key]}, {key: results[key]}, retriever.k_values)
@@ -311,35 +312,11 @@ def retrieve_without_decomposition(retriever, corpus, queries, qrels):
     results = retriever.retrieve(corpus, queries)
     ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values)
     print("start evaluating performance for single query with no decomposition")
-    return evaluate_for_single_query(qrels, results)
+    return evaluate_for_query_batches(qrels, results)
 
 
-def dump_decomposed_queries(dq_file_name, dataset_name, decomposed_queries):
-    # output_file_name = os.path.join(out_dir, dataset_name + "_dq.json")
-    with open(dq_file_name, "w") as f:
-        json.dump(decomposed_queries, f, indent=4)
 
-def retrieve_with_decomposition(retriever, corpus, queries, qrels, out_dir, dataset_name):
-    print("results with decomposition::")
-    decomposed_queries = dict()
-    
-    dq_file_name = os.path.join(out_dir, dataset_name + "_dq.json")
-    if not os.path.exists(dq_file_name):
-        print("start decompose queries")
-        for key in queries:
-            curr_query = queries[key]
-            decomposed_q = obtain_key_words(curr_query)
-            decomposed_queries[key] = decomposed_q
-        dump_decomposed_queries(dq_file_name, dataset_name, decomposed_queries)
-        print("end decompose queries")
-    else:
-        with open(dq_file_name, "r") as f:
-            decomposed_queries = json.load(f)
 
-    results = retriever.retrieve(corpus, decomposed_queries)
-    ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values)
-    print("start evaluating performance for single query with decomposition")
-    return evaluate_for_single_query(qrels, results), decomposed_queries
 
 def compute_decompositions_for_all_queries(retriever, corpus, qrels, output_dir, all_sub_corpus_embedding_ls):
     with open(os.path.join(output_dir, "decomposition.json"), "r") as f:
@@ -384,7 +361,25 @@ data_path = util.download_and_unzip(url, out_dir)
 corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")
 
 #### Load the SBERT model and retrieve using cosine-similarity
-model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
+# model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
+
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# processor = ViTImageProcessor.from_pretrained('google/vit-large-patch16-224')
+# model = ViTForImageClassification.from_pretrained('google/vit-large-patch16-224').to(device)
+model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14").to(device)
+# processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
+raw_processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
+# processor =  lambda images: raw_processor(images=images, return_tensors="pt", padding=False, do_resize=False, do_center_crop=False)["pixel_values"]
+processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
+text_processor =  lambda text: raw_processor(text=[text], return_tensors="pt", padding=True, truncation=True)
+img_processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
+model = model.eval()
+
+
+
+
+model = DRES(models.clip_model(text_processor, model, device), batch_size=16)
 retriever = EvaluateRetrieval(model, score_function="cos_sim") # or "cos_sim" for cosine similarity
 
 all_sub_corpus_embedding_ls=None
@@ -394,15 +389,17 @@ cached_embedding_path = os.path.join(out_dir, "cached_embeddings")
 if os.path.exists(cached_embedding_path):
     all_sub_corpus_embedding_ls = torch.load(cached_embedding_path)
 
-# results, all_sub_corpus_embedding_ls = retriever.retrieve(corpus, queries, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls)
+results, all_sub_corpus_embedding_ls = retriever.retrieve(corpus, queries, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls)
 
 # if not os.path.exists(cached_embedding_path):
 #     torch.save(all_sub_corpus_embedding_ls, cached_embedding_path)
     
-compute_decompositions_for_all_queries(retriever, corpus, qrels, out_dir, all_sub_corpus_embedding_ls)
+# compute_decompositions_for_all_queries(retriever, corpus, qrels, out_dir, all_sub_corpus_embedding_ls)
 # single_q_res_no_decomposition = retrieve_without_decomposition(retriever, corpus, queries, qrels)
 
-# single_q_res_with_decomposition, decomposed_queries = retrieve_with_decomposition(retriever, corpus, queries, qrels, out_dir, dataset)
+single_q_res_with_decomposition, decomposed_queries = retrieve_with_decomposition(retriever, corpus, queries, qrels, out_dir, dataset)
+
+ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values)
 
 # output_res_to_files(out_dir, single_q_res_no_decomposition, single_q_res_with_decomposition, queries, decomposed_queries)
 
@@ -416,12 +413,12 @@ compute_decompositions_for_all_queries(retriever, corpus, qrels, out_dir, all_su
 
 # 
 
-# new_results = retriever.retrieve(corpus, {"51": "change of weather", "52":"coronaviruses"})
+new_results = retriever.retrieve(corpus, {"51": "change of weather", "52":"coronaviruses"})
 
 # #### Evaluate your model with NDCG@k, MAP@K, Recall@K and Precision@K  where k = [1,3,5,10,100,1000] 
 # print("results without decomposition::")
 
-# ndcg, _map, recall, precision = retriever.evaluate({"2": qrels["2"], "3":qrels["2"]}, results, retriever.k_values)
+ndcg, _map, recall, precision = retriever.evaluate({"2": qrels["2"], "3":qrels["2"]}, results, retriever.k_values)
 
 # new_merged_resuts = intersect_res(new_results)
 
