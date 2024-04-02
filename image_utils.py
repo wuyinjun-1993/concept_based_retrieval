@@ -228,6 +228,43 @@ def get_patches_from_bboxes(forward_func,model, images, all_bboxes, input_proces
         # all_patches += patches
     return torch.cat(all_patches), img_labels
 
+def get_patches_from_bboxes0(forward_func,model, images, masks, all_bboxes, input_processor, sub_bboxes=None, image_size=(224, 224), processor=None, resize=None, device="cpu"):
+    if sub_bboxes == None:
+        sub_bboxes = [[[bbox] for bbox in img_bboxes] for img_bboxes in all_bboxes]
+
+    all_patches = []
+    img_labels = []
+    for i, (bboxes, visible, mask, image) in tqdm(enumerate(zip(all_bboxes, sub_bboxes, masks, images))):
+        patches = []
+        # for bbox, viz in zip(bboxes, visible):
+        for j in range(len(bboxes)):
+            bbox = bboxes[j]
+            viz = visible[j]
+            curr_patch = PIL.Image.new('RGB', image.size) #image.copy().filter(ImageFilter.GaussianBlur(radius=10))
+            for viz_box in viz:
+                # add the visible patches from the original image to curr_patch
+                masked_image = np.copy(image)
+                masked_image[mask != (j+1)] = 255
+                masked_image = Image.fromarray(masked_image)
+                curr_patch.paste(masked_image.copy().crop(viz_box), box=viz_box)
+            curr_patch = PIL.ImageOps.pad(curr_patch.crop(bbox), image_size)
+            img_labels.append(i)
+            patches.append(curr_patch)
+        patches = input_processor(patches)
+        if processor is not None:
+            patches = processor(patches)
+        x = _to_device(patches, device)
+
+        if resize:
+            x = torch.nn.functional.interpolate(x, size=resize, mode='bilinear', align_corners=False)
+        all_patches.append(forward_func(x, model).cpu())
+        # patches.append(model(x).cpu())            
+            
+        #     # patches.append(input_processor(curr_patch))
+            
+        # all_patches += patches
+    return torch.cat(all_patches), img_labels
+
 def get_image_embeddings(images, input_processor, forward_func,model,device='cuda', not_normalize=False):
     results = []
     for _, image in tqdm(enumerate(images)):
@@ -295,7 +332,10 @@ class ConceptLearner:
         masks = get_slic_segments(images, n_segments=n_patches)
         bboxes = masks_to_bboxes(masks)
         # get_patches_from_bboxes(model, images, all_bboxes, input_processor, sub_bboxes=None, image_size=(224, 224), processor=None, resize=None, device="cpu"):
+        
         patch_activations, img_for_patch = get_patches_from_bboxes(self.input_to_latent, self.model, images, bboxes, self.input_processor, device=self.device, resize=self.image_size)
+        # patch_activations, img_for_patch = get_patches_from_bboxes0(self.input_to_latent, self.model, images, masks, bboxes, self.input_processor, device=self.device, resize=self.image_size)
+        
         #     # patches = self.input_processor(patches)
         # elif method == "sam":
         #     masks = get_sam_segments(images)

@@ -31,9 +31,11 @@ def convert_samples_to_concepts(args, model, images, processor, device, patch_co
     for idx in range(len(patch_count_ls)):
         patch_count = patch_count_ls[idx]
         if idx == 0:
-            img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, images=images, method="slic", compute_img_emb=True)
+            curr_img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, images=images, method="slic", compute_img_emb=True)
         else:
-            _, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, images=images, method="slic", compute_img_emb=False)
+            curr_img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, images=images, method="slic", compute_img_emb=False)
+        if curr_img_emb is not None:
+            img_emb = curr_img_emb
         patch_emb_ls.append(patch_emb)
         masks_ls.append(masks)
         img_per_batch_ls.append(img_per_patch)
@@ -201,7 +203,7 @@ if __name__ == "__main__":
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "crepe/"))
         # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "crepe/crepe_captions.txt"))
         
-    patch_count_ls = [2, 4]
+    patch_count_ls = [2, 4, 8]
     
     if args.dataset_name in image_retrieval_datasets:
         img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
