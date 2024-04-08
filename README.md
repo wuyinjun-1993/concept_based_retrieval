@@ -40,18 +40,18 @@ python explore_image_retrieval.py --dataset_name crepe --data_path /path/to/data
 
 The retrieval performance is (larger numbers are better):
 
-NDCG@1: 0.2273
+NDCG@1: 0.2727
 
-NDCG@3: 0.3074
+NDCG@3: 0.3755
 
-MAP@1: 0.2273
+MAP@1: 0.2727
 
-MAP@3: 0.2879
+MAP@3: 0.3485
 
-Recall@1: 0.2273
+Rcall@1: 0.2727
 
-Recall@3: 0.3636
+Recall@3: 0.4546
 
-P@1: 0.2273
+P@1: 0.2727
 
-P@3: 0.1212
+P@3: 0.1515
