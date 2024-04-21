@@ -12,6 +12,7 @@ from datasets import load_dataset
 from datasets.download.download_config import DownloadConfig
 from beir import util, LoggingHandler
 from beir.datasets.data_loader import GenericDataLoader
+import time
 # from beir.retrieval.models.clip_model import clip_model
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe"]
@@ -135,6 +136,7 @@ def parse_args():
     parser.add_argument('--query_count', type=int, default=-1, help='config file')
     parser.add_argument('--query_concept', action="store_true", help='config file')
     parser.add_argument('--img_concept', action="store_true", help='config file')
+    parser.add_argument('--total_count', type=int, default=500, help='config file')
     args = parser.parse_args()
     return args
 
@@ -194,7 +196,7 @@ if __name__ == "__main__":
     
     elif args.dataset_name == "crepe":
         queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
-        img_idx_ls, raw_img_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, raw_img_ls)
+        img_idx_ls, raw_img_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, raw_img_ls, total_count = args.total_count)
         
     elif args.dataset_name == "trec-covid":
         url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(args.dataset_name)
@@ -202,8 +204,11 @@ if __name__ == "__main__":
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "crepe/"))
         # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "crepe/crepe_captions.txt"))
-        
-    patch_count_ls = [2, 4, 8]
+    
+    if not args.query_concept:    
+        patch_count_ls = [4, 8]
+    else:
+        patch_count_ls = [32, 64, 128]
     
     if args.dataset_name in image_retrieval_datasets:
         img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
@@ -240,10 +245,16 @@ if __name__ == "__main__":
     retriever = EvaluateRetrieval(retrieval_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
     
     # if args.query_concept:
+    t1 = time.time()
     if not args.img_concept:
         retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count)
     else:
         retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count)
+    
+    t2 = time.time()
+    
+    print(f"Time taken: {t2-t1:.2f}s")    
+    
     # else:
     #     retrieve_by_embeddings(retriever, text_emb_ls, img_emb, qrels)
     
