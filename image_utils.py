@@ -154,7 +154,7 @@ def read_image_captions(caption_file):
 def get_slic_segments(images, n_segments=32):
     all_labels = []
     for image in tqdm(images):
-        segments = slic(np.array(image), n_segments=n_segments, compactness=40, sigma=1, start_label=1)
+        segments = slic(np.array(image), n_segments=n_segments, compactness=20, sigma=1, start_label=1)
         all_labels.append(segments)
     return all_labels
 
@@ -173,7 +173,8 @@ def get_slic_segments_for_sub_images(images_ls, n_segments=32):
     for images in tqdm(images_ls):
         sub_labels = []
         for image in images:
-            segments = slic(np.array(image), n_segments=n_segments, compactness=40, sigma=1, start_label=1)
+            # segments = slic(np.array(image), n_segments=n_segments, compactness=40, sigma=10, start_label=1)
+            segments = slic(np.array(image), n_segments=n_segments, compactness=10, sigma=1, start_label=1)
             sub_labels.append(segments)
         all_labels.append(sub_labels)
     return all_labels
@@ -195,11 +196,14 @@ def merge_bboxes_ls(all_bboxes, prev_bboxes, bboxes):
         for id2 in range(len(bboxes[id1])):
             base_bboxes = np.array(prev_bboxes[id1][id2])
             transformed_bboxes = np.array(bboxes[id1][id2])
-            transformed_bboxes[:, 0] += base_bboxes[:, 0]
-            transformed_bboxes[:, 1] += base_bboxes[:, 1]
+            if len(transformed_bboxes) > 0:
+                transformed_bboxes[:, 0] += base_bboxes[0]
+                transformed_bboxes[:, 2] += base_bboxes[0]
+                transformed_bboxes[:, 1] += base_bboxes[1]
+                transformed_bboxes[:, 3] += base_bboxes[1]
             all_bboxes[id1].extend(transformed_bboxes.tolist())
             transformed_bboxes_ls.extend(transformed_bboxes.tolist())
-    all_curr_transformed_bboxes_ls.append(transformed_bboxes_ls)
+        all_curr_transformed_bboxes_ls.append(transformed_bboxes_ls)
     return all_bboxes, all_curr_transformed_bboxes_ls
 
 def get_patches_from_bboxes2(bboxes_for_img, images):
@@ -241,14 +245,14 @@ def masks_to_bboxes(masks):
     return all_bboxes
 
 
-def extend_bbox(x1, y1, x2, y2, labels, extend_size=10):
+def extend_bbox(x1, y1, x2, y2, labels, extend_size=0):
     x1 = max(0, x1 - extend_size)
     y1 = max(0, y1 - extend_size)
     x2 = min(labels.shape[1], x2 + extend_size)
     y2 = min(labels.shape[0], y2 + extend_size)
     return x1, y1, x2, y2
 
-def derive_and_extend_bbox(curr_mask_ids, labels, extend_size=10):
+def derive_and_extend_bbox(curr_mask_ids, labels, extend_size=0):
     x1 = np.min(curr_mask_ids[1])
     x2 = np.max(curr_mask_ids[1])
     y1 = np.min(curr_mask_ids[0])
@@ -265,6 +269,8 @@ def split_uncovered_boolean_image_mask(uncovered_img, bboxes, widths, heights):
             x1, y1, x2, y2 = derive_and_extend_bbox(curr_mask_ids, labels)
             if x1 <= 0 and y1 <=0 and x2 >= labels.shape[1] and y2 >= labels.shape[0]:
                 continue
+            if x2 - x1 <= 0 or y2 - y1 <= 0:
+                continue
             bboxes.append([x1, y1, x2, y2])
             widths.append(x2 - x1)
             heights.append(y2 - y1)
@@ -272,9 +278,10 @@ def split_uncovered_boolean_image_mask(uncovered_img, bboxes, widths, heights):
         curr_mask_ids = np.nonzero(np.array(uncovered_img))
         x1, y1, x2, y2 = derive_and_extend_bbox(curr_mask_ids, labels)
         if not (x1 <= 0 and y1 <=0 and x2 >= labels.shape[1] and y2 >= labels.shape[0]):
-            bboxes.append([x1, y1, x2, y2])
-            widths.append(x2 - x1)
-            heights.append(y2 - y1)
+            if x2 - x1 > 0 and y2 - y1 > 0:
+                bboxes.append([x1, y1, x2, y2])
+                widths.append(x2 - x1)
+                heights.append(y2 - y1)
         
         
         
@@ -289,6 +296,10 @@ def masks_to_bboxes_for_subimages(masks_ls):
         bboxes_ls = []
         for img_mask in masks:
             bboxes = []
+            # if len(all_bboxes) == 14 and len(bboxes_ls) > 10:
+            #     print()
+            # if len(all_bboxes) == 14 and len(bboxes_ls) == 18:
+            #     print()
             if len(np.unique(img_mask)) > 1:
                 covered_mask = np.zeros_like(img_mask)
                 props = regionprops(img_mask)
@@ -302,9 +313,11 @@ def masks_to_bboxes_for_subimages(masks_ls):
                     # y1 = max(0, y1 - 10)
                     # x2 = min(img_mask.shape[1], x2 + 10)
                     # y2 = min(img_mask.shape[0], y2 + 10)
-                    x1, y1, x2, y2 = extend_bbox(x1, y1, x2, y2, img_mask, extend_size=10)
+                    x1, y1, x2, y2 = extend_bbox(x1, y1, x2, y2, img_mask)
                     
                     if x1 <= 0 and y1 <=0 and x2 >= img_mask.shape[1] and y2 >= img_mask.shape[0]:
+                        continue
+                    if x2 - x1 <= 0 or y2 - y1 <= 0:
                         continue
                     bboxes.append([x1, y1, x2, y2])
                     widths.append(x2 - x1)
@@ -595,7 +608,7 @@ class ConceptLearner:
         utils.save((image_embs, patch_activations, masks, bboxes, img_for_patch), f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl")
         return image_embs, patch_activations, masks, bboxes, img_for_patch
     
-    def get_patches_by_hierarchies(self, n_patches=8, images=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True, depth_lim=6):
+    def get_patches_by_hierarchies(self, n_patches=8, images=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True, depth_lim=4):
         """Get patches from images using different segmentation methods."""
         if images is None:
             images = self.samples
@@ -627,19 +640,19 @@ class ConceptLearner:
         depth=0
         prev_bboxes_ls = None
         while True:
-            if depth >= depth_lim:
+            if depth > depth_lim:
                 break
             if depth == 0:
-                n_patches = 8
+                n_patches = 32
             else:
-                n_patches = 4
+                n_patches = 2
             masks = get_slic_segments_for_sub_images(curr_sub_images_ls, n_segments=n_patches)
             # bboxes = masks_to_bboxes(masks)
             bboxes_ls = masks_to_bboxes_for_subimages(masks)
             all_bboxes_ls, prev_bboxes_ls = merge_bboxes_ls(all_bboxes_ls, prev_bboxes_ls, bboxes_ls)
             curr_sub_images_ls = get_sub_image_by_bbox_for_images(curr_sub_images_ls, bboxes_ls)
             curr_sub_images_ls = flatten_sub_image_ls(curr_sub_images_ls)
-            prev_bboxes_ls = flatten_sub_image_ls(bboxes_ls)
+            # prev_bboxes_ls = flatten_sub_image_ls(bboxes_ls)
             if is_bbox_ls_full_empty(bboxes_ls):
                 break
             

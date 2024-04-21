@@ -215,7 +215,7 @@ if __name__ == "__main__":
     else:
         img_emb = text_model.encode_corpus(corpus)
 
-    
+    patch_emb_by_img_ls = patch_emb_ls
     if args.img_concept:
         patch_emb_by_img_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb)
     
