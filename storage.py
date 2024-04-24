@@ -2,6 +2,9 @@ from tqdm import tqdm
 
 import torch.nn.functional as F
 import torch
+from beir.retrieval.search.dense import util
+import os
+
 
 class image_storage_node:
     def __init__(self, image, bbox, embedding, parent=None):
@@ -12,6 +15,24 @@ class image_storage_node:
         self.children = []
         self.children_embeddings = None
 
+    @staticmethod
+    def obtain_storage_name(path, root_idx, hash_val):
+        root_node_folder = os.path.join(path, str(root_idx))
+        if os.path.exists(root_node_folder) is False:
+            os.makedirs(root_node_folder)
+        
+        store_name = os.path.join(root_node_folder, str(hash_val) + ".pt")
+        return store_name
+    
+    @staticmethod
+    def obtain_storage_name_for_subtree(path, root_idx, hash_val):
+        root_node_folder = os.path.join(path, str(root_idx))
+        if os.path.exists(root_node_folder) is False:
+            os.makedirs(root_node_folder)
+        
+        store_name = os.path.join(root_node_folder, str(hash_val) + "_subtree.pt")
+        return store_name
+    
     # def set_embedding(self, embedding):
     #     self.embedding = embedding
     def add_child(self, child):
@@ -20,22 +41,74 @@ class image_storage_node:
     def add_children_embeddings(self, children_embeddings):
         self.children_embeddings = children_embeddings
     
-    def compare_query_embedding_and_children_embeddings(self, query_embedding, device):
+    # def compare_query_embedding_and_children_embeddings(self, query_embedding, device, path, root_idx):
+    #     self.load_node(path, root_idx)
+    #     if self.children_embeddings is None:
+    #         return None, None
+    #     # self.children_embeddings = self.children_embeddings.to(device)
+    #     q_child_sims = util.cos_sim(query_embedding.to(device), self.children_embeddings.to(device))
+    #     max_q_child_sim = torch.max(q_child_sims)
+    #     max_q_child_sim_idx = torch.argmax(q_child_sims)
+    #     next_child = self.children[max_q_child_sim_idx]
+    #     # del self.children_embeddings
+    #     # self.children_embeddings = None
+    #     return max_q_child_sim.item(), next_child
+    
+    def compare_query_embedding_and_children_embeddings(self, query_embedding, device, path = None, root_idx=None):
         if self.children_embeddings is None:
             return None, None
-        self.children_embeddings = self.children_embeddings.to(device)
-        q_child_sims = F.cosine_similarity(query_embedding, self.children_embeddings, dim=-1)
+        # self.children_embeddings = self.children_embeddings.to(device)
+        q_child_sims = util.cos_sim(query_embedding.to(device), self.children_embeddings.to(device))
         max_q_child_sim = torch.max(q_child_sims)
         max_q_child_sim_idx = torch.argmax(q_child_sims)
+        if path is not None:
+            self.load_subtree(path, max_q_child_sim_idx)
         next_child = self.children[max_q_child_sim_idx]
+        # del self.children_embeddings
+        # self.children_embeddings = None
         return max_q_child_sim.item(), next_child
         
+    def store_node(self, path, root_idx):
+        if self.children_embeddings is not None:
+            hash_val = hash(self)
+            storage_file_name = image_storage_node.obtain_storage_name(path, root_idx, hash_val)
+            if not os.path.exists(storage_file_name):
+                
+                torch.save(self.children_embeddings, storage_file_name)
+            del self.children_embeddings
+            self.children_embeddings = None
+    
+    def store_subtree(self, path, root_idx):
+        # if self.children_embeddings is not None:
+        hash_val = hash(self)
+        storage_file_name = image_storage_node.obtain_storage_name_for_subtree(path, root_idx, hash_val)
+        if not os.path.exists(storage_file_name):
+            
+            torch.save(self, storage_file_name)
+            
+        return storage_file_name
+            
+            
+    def load_node(self, path, root_idx):
+        if self.children_embeddings is not None:
+            return 
+        hash_val = hash(self)
+        storage_file_name = image_storage_node.obtain_storage_name(path, root_idx, hash_val)
+        
+        if os.path.exists(storage_file_name):
+            self.children_embeddings = torch.load(storage_file_name)
+        else:
+            self.children_embeddings = None
+    
+    def load_subtree(self, child_idx):
+        if type(self.children[child_idx]) is str:
+            storage_file_name = self.children[child_idx]
+            self.children[child_idx] = torch.load(storage_file_name)
+    
+    # def get(self):
+    #     # get image from disk
+    #     pass
 
-    def get(self):
-        # get image from disk
-        pass
-    
-    
 class image_storage_tree:
     def __init__(self, root):
         self.root = root

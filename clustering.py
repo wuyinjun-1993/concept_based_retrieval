@@ -66,7 +66,18 @@ def compute_similarities_by_batches(X, k, centroids, device = 'cuda', batch_size
         del batch_X
     return similarities
 
-def clustering_determine_k(X_ls, max_k=2000, max_deg = 20):
+
+def select_patch_embeddings_closest_to_centroids(unique_sub_sample_ids, sub_X, sub_sample_ids, mean_sub_X):
+    most_similar_sample_ls = []
+    for unique_sub_sample_id in unique_sub_sample_ids:
+        curr_sub_X = sub_X[sub_sample_ids == unique_sub_sample_id]
+        curr_sub_X_centroid_sims = F.cosine_similarity(curr_sub_X, mean_sub_X.view(1,-1))
+        most_similar_patch_id_curr_sample = torch.argmax(curr_sub_X_centroid_sims, dim=0)
+        most_similar_sample_ls.append(curr_sub_X[most_similar_patch_id_curr_sample])
+    return torch.stack(most_similar_sample_ls)
+        
+
+def clustering_determine_k(X_ls, img_per_patch_ls, max_k=2000, max_deg = 20):
     """
     Determine the optimal number of clusters using the elbow method.
 
@@ -79,12 +90,13 @@ def clustering_determine_k(X_ls, max_k=2000, max_deg = 20):
     """
     inertias = []
     X = torch.cat(X_ls, dim=0)
-    X = X_ls[0]
+    img_per_patch_tensor = torch.cat([torch.tensor(img_per_patch).view(-1) for img_per_patch in img_per_patch_ls])
+    # X = X_ls[0]
     X = X/ torch.norm(X, dim=1, keepdim=True)
     
     # clustering = AgglomerativeClustering(n_clusters=None, metric="cosine", linkage="complete", distance_threshold=0.1).fit(X.cpu().numpy())
     
-    clustering = Birch(threshold=0.3, n_clusters=None).fit(X.cpu().numpy())
+    clustering = Birch(threshold=0.4, n_clusters=None).fit(X.cpu().numpy())
 
     cosine_sim_min_ls = []
     cosine_sim_mat_ls = []
@@ -93,8 +105,14 @@ def clustering_determine_k(X_ls, max_k=2000, max_deg = 20):
     
     min_cosine_sim_min2 = 1
     min_cosine_sim_min_idx2 = 0
-    for label in np.unique(clustering.labels_):
-        sub_X = X[clustering.labels_ == label]
+    cluster_centroid_ls = []
+    cluster_sample_count_ls = []
+    cluster_sample_ids_ls = []
+    cluster_sub_X_tensor_ls = []
+    for label in tqdm(np.unique(clustering.labels_)):
+        sub_X = X[clustering.labels_ == label]      
+        sub_sample_ids = img_per_patch_tensor[clustering.labels_ == label]
+        
         mean_sub_X = sub_X.mean(0).unsqueeze(0)
         cosine_sim_mat = torch.mm(sub_X, sub_X.t())
         cosine_sim_mat2 = torch.mm(mean_sub_X, sub_X.t())/(torch.norm(mean_sub_X, dim=-1).unsqueeze(1)*torch.norm(sub_X, dim=-1).unsqueeze(0))
@@ -114,24 +132,39 @@ def clustering_determine_k(X_ls, max_k=2000, max_deg = 20):
         
         cosine_sim_min_ls.append(cosine_sim_min)
         cosine_sim_mat_ls.append(cosine_sim_mat)
+        
+        cluster_centroid_ls.append(mean_sub_X)
+        
+        unique_sub_sample_ids = sub_sample_ids.unique()
+        
+        most_similar_sub_X_tensor = select_patch_embeddings_closest_to_centroids(unique_sub_sample_ids, sub_X, sub_sample_ids, mean_sub_X)
+        
+        
+        cluster_sample_count_ls.append(len(sub_sample_ids.unique()))
+        cluster_sample_ids_ls.append(unique_sub_sample_ids)
+        cluster_sub_X_tensor_ls.append(most_similar_sub_X_tensor)
+        
+    cluster_centroid_tensor = torch.cat(cluster_centroid_ls, dim=0)
     
-    for k in range(1000, max_k + 1, 100):
-        centroids, cluster_assignments, max_similarity = kmeans_cosine(X, k)
-        min_max_similarity = torch.arccos(torch.min(max_similarity))/np.pi*180
-        print("min max similarity: ", min_max_similarity.item())
-        if min_max_similarity < max_deg:
-            break
-        torch.cuda.empty_cache()
-        # inertia = 0
-        # for i in range(k):
-        #     inertia += F.cosine_similarity(X[cluster_assignments == i], centroids[i].unsqueeze(0)).sum()
-        # inertias.append(inertia.item())
+    return cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls
     
-    # inertias = torch.tensor(inertias)
-    # inertias_diff = inertias[:-1] - inertias[1:]
+    # for k in range(1000, max_k + 1, 100):
+    #     centroids, cluster_assignments, max_similarity = kmeans_cosine(X, k)
+    #     min_max_similarity = torch.arccos(torch.min(max_similarity))/np.pi*180
+    #     print("min max similarity: ", min_max_similarity.item())
+    #     if min_max_similarity < max_deg:
+    #         break
+    #     torch.cuda.empty_cache()
+    #     # inertia = 0
+    #     # for i in range(k):
+    #     #     inertia += F.cosine_similarity(X[cluster_assignments == i], centroids[i].unsqueeze(0)).sum()
+    #     # inertias.append(inertia.item())
     
-    # optimal_k = torch.argmin(inertias_diff) + 1
-    # return optimal_k
-    return k, centroids, cluster_assignments, max_similarity
+    # # inertias = torch.tensor(inertias)
+    # # inertias_diff = inertias[:-1] - inertias[1:]
+    
+    # # optimal_k = torch.argmin(inertias_diff) + 1
+    # # return optimal_k
+    # return k, centroids, cluster_assignments, max_similarity
 
 

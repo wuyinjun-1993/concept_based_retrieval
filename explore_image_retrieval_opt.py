@@ -16,6 +16,10 @@ from beir.datasets.data_loader import GenericDataLoader
 import time
 # from beir.retrieval.models.clip_model import clip_model
 from storage import *
+import cProfile
+import pstats
+import io
+
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe"]
 
@@ -146,6 +150,7 @@ def retrieve_by_full_query(img_emb, text_emb_ls):
 def parse_args():
     parser = argparse.ArgumentParser(description='CUB concept learning')
     parser.add_argument('--data_path', type=str, default="/data6/wuyinjun/", help='config file')
+    parser.add_argument('--store_path', type=str, default="output/", help='config file')
     parser.add_argument('--dataset_name', type=str, default="crepe", help='config file')
     parser.add_argument('--query_count', type=int, default=-1, help='config file')
     parser.add_argument('--query_concept', action="store_true", help='config file')
@@ -154,6 +159,7 @@ def parse_args():
     parser.add_argument('--total_count', type=int, default=500, help='config file')
     parser.add_argument('--partition_strategy', type=str, default="one", help='config file')
     parser.add_argument('--extend_size', type=int, default=5, help='config file')
+    parser.add_argument("--in_disk", action="store_true", help="config file")
     parser.add_argument("--parallel", action="store_true", help="config file")
     parser.add_argument('--depth_lim', type=int, default=5, help='config file')
     args = parser.parse_args()
@@ -229,11 +235,20 @@ if __name__ == "__main__":
     else:
         patch_count_ls = [32, 64, 128]
     
+    if args.in_disk:
+        args.store_path = os.path.join(args.store_path, args.dataset_name)
+        # if not os.path.exists(args.store_path):
+        os.makedirs(args.store_path, exist_ok=True)
+    
     if args.dataset_name in image_retrieval_datasets:
         if args.img_concept and args.tree_concept:
             root_nodes_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
+            if args.in_disk:
+                util.store_all_node_trees(args.store_path, root_nodes_ls)        
         else:    
             img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
+            if args.in_disk:
+                util.store_all_embeddings(args.store_path, patch_emb_ls)
     else:
         img_emb = text_model.encode_corpus(corpus)
 
@@ -269,21 +284,33 @@ if __name__ == "__main__":
     else:
         retrieval_model = DRES_over_trees(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
     retriever = EvaluateRetrieval(retrieval_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
-    
+    text_emb_ls = [[torch.cat(item) for item in items] for items in text_emb_ls]
     # if args.query_concept:
     t1 = time.time()
+    
+    
+    # pr = cProfile.Profile()
+    # pr.enable()
+
     if not args.img_concept:
         retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count)
     else:
         if not args.tree_concept:
-            retrieve_by_embeddings(retriever, patch_emb_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
+            retrieve_by_embeddings(retriever, patch_emb_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, in_disk=args.in_disk, store_path=args.store_path, corpus_count=len(patch_emb_ls))
         else:
-            retrieve_by_embeddings(retriever, root_nodes_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
+            retrieve_by_embeddings(retriever, None, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, in_disk=args.in_disk, root_nodes_ls=root_nodes_ls, store_path=args.store_path)
+    
+    # pr.disable()
+    # s = io.StringIO()
+    # ps = pstats.Stats(pr, stream=s).sort_stats('tottime')
+    # ps.print_stats()
+
+    # with open('/home/wuyinjun/profile.txt', 'w+') as f:
+    #     f.write(s.getvalue())
     
     t2 = time.time()
     
-    print(f"Time taken: {t2-t1:.2f}s")    
-    
+    print(f"Time taken: {t2-t1:.2f}s")
     # else:
     #     retrieve_by_embeddings(retriever, text_emb_ls, img_emb, qrels)
     
