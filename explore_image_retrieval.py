@@ -14,7 +14,7 @@ from beir import util, LoggingHandler
 from beir.datasets.data_loader import GenericDataLoader
 import time
 # from beir.retrieval.models.clip_model import clip_model
-
+from clustering import *
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe"]
 
 
@@ -137,6 +137,8 @@ def parse_args():
     parser.add_argument('--query_concept', action="store_true", help='config file')
     parser.add_argument('--img_concept', action="store_true", help='config file')
     parser.add_argument('--total_count', type=int, default=500, help='config file')
+    parser.add_argument("--parallel", action="store_true", help="config file")
+    parser.add_argument("--search_by_cluster", action="store_true", help="config file")
     args = parser.parse_args()
     return args
 
@@ -212,6 +214,8 @@ if __name__ == "__main__":
     
     if args.dataset_name in image_retrieval_datasets:
         img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
+        # if args.search_by_cluster:
+        #     num_clusters, embedding_cluster_centroids, embedding_cluster_assignments, embedding_cluster_max_similarity = clustering_determine_k(patch_emb_ls)
     else:
         img_emb = text_model.encode_corpus(corpus)
 
@@ -247,9 +251,9 @@ if __name__ == "__main__":
     # if args.query_concept:
     t1 = time.time()
     if not args.img_concept:
-        retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count)
+        retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
     else:
-        retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count)
+        retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
     
     t2 = time.time()
     

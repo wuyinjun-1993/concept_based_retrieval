@@ -16,6 +16,9 @@ import pandas as pd
 from retrieval_utils import decompose_single_query
 from scipy import ndimage
 import cv2
+from storage import *
+
+
 @dataclass
 class Patch:
     image: PIL.Image
@@ -44,6 +47,37 @@ def filter_atom_images_by_langs(dataset, target_count = 10000):
             
     return selected_dataset_ls
 
+def determine_n_patches(partition_strategy, depth):
+    if partition_strategy == "one":
+        if depth == 0:
+            n_patches = 32
+        # elif depth == 1:
+        #     n_patches = 4
+        else:
+            n_patches = 2
+    elif partition_strategy == "two":
+        if depth == 0:
+            n_patches = 32
+        elif depth == 1:
+            n_patches = 4
+        else:
+            n_patches = 2
+
+    elif partition_strategy == "three":
+        if depth == 0:
+            n_patches = 32
+        else:
+            n_patches = 3
+            
+    elif partition_strategy == "four":
+        if depth == 0:
+            n_patches = 16
+        elif depth == 1:
+            n_patches = 4
+        else:
+            n_patches = 2
+
+    return n_patches
 
 def load_atom_datasets(data_path):
     image_ls = load_dataset("TREC-AToMiC/AToMiC-Images-v0.2", split='train')
@@ -154,7 +188,7 @@ def read_image_captions(caption_file):
 def get_slic_segments(images, n_segments=32):
     all_labels = []
     for image in tqdm(images):
-        segments = slic(np.array(image), n_segments=n_segments, compactness=20, sigma=1, start_label=1)
+        segments = slic(np.array(image), n_segments=n_segments, compactness=10, sigma=1, start_label=1)
         all_labels.append(segments)
     return all_labels
 
@@ -173,8 +207,8 @@ def get_slic_segments_for_sub_images(images_ls, n_segments=32):
     for images in tqdm(images_ls):
         sub_labels = []
         for image in images:
-            # segments = slic(np.array(image), n_segments=n_segments, compactness=40, sigma=10, start_label=1)
-            segments = slic(np.array(image), n_segments=n_segments, compactness=10, sigma=1, start_label=1)
+            segments = slic(np.array(image), n_segments=n_segments, compactness=40, sigma=10, start_label=1)
+            # segments = slic(np.array(image), n_segments=n_segments, compactness=40, sigma=1, start_label=1)
             sub_labels.append(segments)
         all_labels.append(sub_labels)
     return all_labels
@@ -251,7 +285,7 @@ def extend_bbox(x1, y1, x2, y2, labels, extend_size=0):
     x2 = min(labels.shape[1], x2 + extend_size)
     y2 = min(labels.shape[0], y2 + extend_size)
     return x1, y1, x2, y2
-
+# 5
 def derive_and_extend_bbox(curr_mask_ids, labels, extend_size=0):
     x1 = np.min(curr_mask_ids[1])
     x2 = np.max(curr_mask_ids[1])
@@ -261,12 +295,12 @@ def derive_and_extend_bbox(curr_mask_ids, labels, extend_size=0):
     return x1, y1, x2, y2
 
 
-def split_uncovered_boolean_image_mask(uncovered_img, bboxes, widths, heights):
+def split_uncovered_boolean_image_mask(uncovered_img, bboxes, widths, heights, extend_size=0):
     labels, num_components = ndimage.label(uncovered_img)
     if num_components > 1:
         for i in range(1, num_components + 1):
             curr_mask_ids = np.nonzero(labels == i)
-            x1, y1, x2, y2 = derive_and_extend_bbox(curr_mask_ids, labels)
+            x1, y1, x2, y2 = derive_and_extend_bbox(curr_mask_ids, labels, extend_size=extend_size)
             if x1 <= 0 and y1 <=0 and x2 >= labels.shape[1] and y2 >= labels.shape[0]:
                 continue
             if x2 - x1 <= 0 or y2 - y1 <= 0:
@@ -276,7 +310,7 @@ def split_uncovered_boolean_image_mask(uncovered_img, bboxes, widths, heights):
             heights.append(y2 - y1)
     else:
         curr_mask_ids = np.nonzero(np.array(uncovered_img))
-        x1, y1, x2, y2 = derive_and_extend_bbox(curr_mask_ids, labels)
+        x1, y1, x2, y2 = derive_and_extend_bbox(curr_mask_ids, labels, extend_size=extend_size)
         if not (x1 <= 0 and y1 <=0 and x2 >= labels.shape[1] and y2 >= labels.shape[0]):
             if x2 - x1 > 0 and y2 - y1 > 0:
                 bboxes.append([x1, y1, x2, y2])
@@ -287,7 +321,7 @@ def split_uncovered_boolean_image_mask(uncovered_img, bboxes, widths, heights):
         
     
 
-def masks_to_bboxes_for_subimages(masks_ls):
+def masks_to_bboxes_for_subimages(masks_ls, extend_size=5):
     all_bboxes = []
 
     widths = []
@@ -313,7 +347,7 @@ def masks_to_bboxes_for_subimages(masks_ls):
                     # y1 = max(0, y1 - 10)
                     # x2 = min(img_mask.shape[1], x2 + 10)
                     # y2 = min(img_mask.shape[0], y2 + 10)
-                    x1, y1, x2, y2 = extend_bbox(x1, y1, x2, y2, img_mask)
+                    x1, y1, x2, y2 = extend_bbox(x1, y1, x2, y2, img_mask, extend_size=extend_size)
                     
                     if x1 <= 0 and y1 <=0 and x2 >= img_mask.shape[1] and y2 >= img_mask.shape[0]:
                         continue
@@ -325,7 +359,7 @@ def masks_to_bboxes_for_subimages(masks_ls):
                     covered_mask[y1:y2, x1:x2] = 1
                 uncovered_img = Image.fromarray((1-covered_mask).astype(np.uint8) * 255)
                 if np.sum((1-covered_mask)) > 0:
-                    split_uncovered_boolean_image_mask(uncovered_img, bboxes, widths, heights)
+                    split_uncovered_boolean_image_mask(uncovered_img, bboxes, widths, heights, extend_size=extend_size)
             bboxes_ls.append(bboxes)
         all_bboxes.append(bboxes_ls)
         
@@ -499,6 +533,21 @@ def embed_patches_ls(forward_func, patches_ls, model, input_processor, processor
         patch_embs_ls.append(patch_embs)
     return patch_embs_ls
 
+def embed_patches_two_level_ls(forward_func, full_patches_ls, model, input_processor, processor = None, device='cuda', resize=None):
+    
+    full_patch_embs_ls = []    
+    for patches_ls in tqdm(full_patches_ls):
+        patch_embs_ls = []    
+        for patches in patches_ls:
+            if len(patches) > 0:
+                patch_embs = embed_patches(forward_func, patches, model, input_processor, processor=processor, device=device, resize=resize)
+            else:
+                patch_embs = None
+            patch_embs_ls.append(patch_embs)
+        full_patch_embs_ls.append(patch_embs_ls)
+    return full_patch_embs_ls
+
+
 def concat_patch_embs(patch_embs_ls):
     concat_patch_embs_ls = []
     concat_patch_emb_idx_ls = []
@@ -546,13 +595,13 @@ class ConceptLearner:
             images = self.samples
 
         samples_hash = utils.hashfn(images)
-        # if os.path.exists(f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"):
-        #     print("Loading cached patches")
-        #     print(samples_hash)
-        #     image_embs, patch_activations, masks, bboxes, img_for_patch = utils.load(f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl")
-        #     if image_embs is None and compute_img_emb:
-        #         image_embs = get_image_embeddings(images, self.input_processor, self.input_to_latent, self.model, not_normalize=not_normalize)    
-        #     return image_embs, patch_activations, masks, bboxes, img_for_patch
+        if os.path.exists(f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"):
+            print("Loading cached patches")
+            print(samples_hash)
+            image_embs, patch_activations, masks, bboxes, img_for_patch = utils.load(f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl")
+            if image_embs is None and compute_img_emb:
+                image_embs = get_image_embeddings(images, self.input_processor, self.input_to_latent, self.model, not_normalize=not_normalize)    
+            return image_embs, patch_activations, masks, bboxes, img_for_patch
         if compute_img_emb:
             image_embs = get_image_embeddings(images, self.input_processor, self.input_to_latent, self.model, not_normalize=not_normalize)
         else:
@@ -608,20 +657,22 @@ class ConceptLearner:
         utils.save((image_embs, patch_activations, masks, bboxes, img_for_patch), f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl")
         return image_embs, patch_activations, masks, bboxes, img_for_patch
     
-    def get_patches_by_hierarchies(self, n_patches=8, images=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True, depth_lim=4):
+    def get_patches_by_hierarchies(self, images=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True, depth_lim=5, partition_strategy="one", extend_size=0):
         """Get patches from images using different segmentation methods."""
         if images is None:
             images = self.samples
 
         samples_hash = utils.hashfn(images)
-        cached_file_name=f"output/saved_patches_hierarchy_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
-        # if os.path.exists(cached_file_name):
-        #     print("Loading cached patches")
-        #     print(samples_hash)
-        #     image_embs, patch_activations, masks, bboxes, img_for_patch = utils.load(cached_file_name)
-        #     if image_embs is None and compute_img_emb:
-        #         image_embs = get_image_embeddings(images, self.input_processor, self.input_to_latent, self.model, not_normalize=not_normalize)    
-        #     return image_embs, patch_activations, masks, bboxes, img_for_patch
+        
+        cached_file_name=f"output/saved_patches_hierarchy_{method}_{partition_strategy}_{depth_lim}_{extend_size}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
+        if os.path.exists(cached_file_name):
+            print("Loading cached patches")
+            print(samples_hash)
+            image_embs, patch_activations, masks, bboxes, img_for_patch = utils.load(cached_file_name)
+            if image_embs is None and compute_img_emb:
+                image_embs = get_image_embeddings(images, self.input_processor, self.input_to_latent, self.model, not_normalize=not_normalize)    
+            return image_embs, patch_activations, masks, bboxes, img_for_patch
+        
         if compute_img_emb:
             image_embs = get_image_embeddings(images, self.input_processor, self.input_to_latent, self.model, not_normalize=not_normalize)
         else:
@@ -642,13 +693,16 @@ class ConceptLearner:
         while True:
             if depth > depth_lim:
                 break
-            if depth == 0:
-                n_patches = 32
-            else:
-                n_patches = 2
+            # if depth == 0:
+            #     n_patches = 32
+            # elif depth == 1:
+            #     n_patches = 4
+            # else:
+            #     n_patches = 2
+            n_patches = determine_n_patches(partition_strategy, depth)
             masks = get_slic_segments_for_sub_images(curr_sub_images_ls, n_segments=n_patches)
             # bboxes = masks_to_bboxes(masks)
-            bboxes_ls = masks_to_bboxes_for_subimages(masks)
+            bboxes_ls = masks_to_bboxes_for_subimages(masks, extend_size=extend_size)
             all_bboxes_ls, prev_bboxes_ls = merge_bboxes_ls(all_bboxes_ls, prev_bboxes_ls, bboxes_ls)
             curr_sub_images_ls = get_sub_image_by_bbox_for_images(curr_sub_images_ls, bboxes_ls)
             curr_sub_images_ls = flatten_sub_image_ls(curr_sub_images_ls)
@@ -673,6 +727,80 @@ class ConceptLearner:
             os.mkdir(f"output/")
         utils.save((image_embs, patch_activations, masks, all_bboxes_ls, img_for_patch), cached_file_name)
         return image_embs, patch_activations, masks, all_bboxes_ls, img_for_patch
+    
+    def get_patches_by_hierarchies_by_trees(self, images=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True, depth_lim=5, partition_strategy="one", extend_size=0):
+        """Get patches from images using different segmentation methods."""
+        if images is None:
+            images = self.samples
+
+        samples_hash = utils.hashfn(images)
+        cached_file_name=f"output/saved_patches_hierarchy_by_trees_{method}_{partition_strategy}_{depth_lim}_{extend_size}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
+        if os.path.exists(cached_file_name):
+            print("Loading cached patches")
+            print(samples_hash)
+            # image_embs, patch_activations, masks, bboxes, img_for_patch = utils.load(cached_file_name)
+            root_node_ls = utils.load(cached_file_name)
+            # if image_embs is None and compute_img_emb:
+            #     image_embs = get_image_embeddings(images, self.input_processor, self.input_to_latent, self.model, not_normalize=not_normalize)    
+            # return image_embs, patch_activations, masks, bboxes, img_for_patch
+            return root_node_ls
+        if compute_img_emb:
+            image_embs = get_image_embeddings(images, self.input_processor, self.input_to_latent, self.model, not_normalize=not_normalize)
+        else:
+            image_embs = None
+        patch_activations = None
+        masks = None
+        bboxes = None
+        img_for_patch = None
+        # if method == "slic":
+        
+        all_sub_images_ls = transform_image_ls_to_sub_image_ls(images)
+        # embed_patches_ls(forward_func, patches_ls, model, input_processor, processor, device='cuda', resize=None)
+        all_sub_embs_ls = embed_patches_ls(self.input_to_latent, all_sub_images_ls, self.model, self.input_processor, device=self.device, resize=self.image_size)
+        all_bboxes_ls = []
+        curr_sub_images_ls = transform_image_ls_to_sub_image_ls(images)
+                
+        # root_node_ls = create_nodes_same_layer(curr_sub_images_ls, None, all_sub_embs_ls)
+        root_node_ls = init_root_nodes(curr_sub_images_ls, None, all_sub_embs_ls)
+        parent_node_ls = root_node_ls
+        depth=0
+        prev_bboxes_ls = None
+        while True:
+            if depth > depth_lim:
+                break
+            n_patches = determine_n_patches(partition_strategy, depth)
+            masks = get_slic_segments_for_sub_images(curr_sub_images_ls, n_segments=n_patches)
+            # bboxes = masks_to_bboxes(masks)
+            bboxes_ls = masks_to_bboxes_for_subimages(masks, extend_size=extend_size)
+            all_bboxes_ls, prev_bboxes_ls = merge_bboxes_ls(all_bboxes_ls, prev_bboxes_ls, bboxes_ls)
+            curr_sub_images_ls = get_sub_image_by_bbox_for_images(curr_sub_images_ls, bboxes_ls)
+            # curr_sub_images_ls = flatten_sub_image_ls(curr_sub_images_ls)
+            # prev_bboxes_ls = flatten_sub_image_ls(bboxes_ls)
+            if is_bbox_ls_full_empty(bboxes_ls):
+                break
+            
+            curr_sub_embs_ls = embed_patches_two_level_ls(self.input_to_latent, curr_sub_images_ls, self.model, self.input_processor, device=self.device, resize=self.image_size)
+            # all_sub_embs_ls = merge_sub_images_ls_to_all_images_ls(curr_sub_embs_ls, all_sub_embs_ls)
+            curr_node_ls = create_non_root_nodes_same_layer(curr_sub_images_ls, bboxes_ls, curr_sub_embs_ls, parent_node_ls)
+            curr_sub_images_ls = flatten_sub_image_ls(curr_sub_images_ls)
+            parent_node_ls = curr_node_ls #flatten_sub_image_ls(curr_node_ls)
+            depth += 1
+        
+        # patch_activations, img_for_patch = concat_patch_embs(all_sub_embs_ls)
+            # get_patches_from_bboxes(model, images, all_bboxes, input_processor, sub_bboxes=None, image_size=(224, 224), processor=None, resize=None, device="cpu"):
+        # if not use_mask:
+        #     patch_activations, img_for_patch = get_patches_from_bboxes(self.input_to_latent, self.model, images, all_bboxes, self.input_processor, device=self.device, resize=self.image_size)
+        # else:
+        #     patch_activations, img_for_patch = get_patches_from_bboxes0(self.input_to_latent, self.model, images, masks, bboxes, self.input_processor, device=self.device, resize=self.image_size)
+                
+            
+        
+        if not os.path.exists(f"output/"):
+            os.mkdir(f"output/")
+        # utils.save((image_embs, patch_activations, masks, all_bboxes_ls, img_for_patch), cached_file_name)
+        utils.save(root_node_ls, cached_file_name)
+        # return image_embs, patch_activations, masks, all_bboxes_ls, img_for_patch
+        return root_node_ls
 
 
 def load_image_as_numpy(image_path):

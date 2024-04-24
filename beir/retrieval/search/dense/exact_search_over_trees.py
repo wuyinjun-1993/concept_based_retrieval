@@ -5,12 +5,10 @@ import torch
 from typing import Dict, List
 from tqdm import tqdm
 logger = logging.getLogger(__name__)
-import concurrent.futures
-import multiprocessing
-from joblib import Parallel, delayed
 import threading
+
 #Parent class for any dense model
-class DenseRetrievalExactSearch:
+class DenseRetrievalExactSearch_over_trees:
     
     def __init__(self, model, batch_size: int = 128, corpus_chunk_size: int = 50000, **kwargs):
         #model is class that provides encode_corpus() and encode_queries()
@@ -88,68 +86,82 @@ class DenseRetrievalExactSearch:
             query_count = len(query_embeddings)
 
         all_cos_scores = []
-        if all_sub_corpus_embedding_ls is None:
-            itr = range(0, len(corpus), self.corpus_chunk_size)
-            all_sub_corpus_embedding_ls = []
-            for batch_num, corpus_start_idx in enumerate(itr):
-                logger.info("Encoding Batch {}/{}...".format(batch_num+1, len(itr)))
-                corpus_end_idx = min(corpus_start_idx + self.corpus_chunk_size, len(corpus))
+        # if all_sub_corpus_embedding_ls is None:
+        #     itr = range(0, len(corpus), self.corpus_chunk_size)
+        #     all_sub_corpus_embedding_ls = []
+        #     for batch_num, corpus_start_idx in enumerate(itr):
+        #         logger.info("Encoding Batch {}/{}...".format(batch_num+1, len(itr)))
+        #         corpus_end_idx = min(corpus_start_idx + self.corpus_chunk_size, len(corpus))
 
-                #Encode chunk of corpus    
-                sub_corpus_embeddings = self.model.encode_corpus(
-                    corpus[corpus_start_idx:corpus_end_idx],
-                    batch_size=self.batch_size,
-                    show_progress_bar=self.show_progress_bar, 
-                    convert_to_tensor = self.convert_to_tensor
-                    )
+        #         #Encode chunk of corpus    
+        #         sub_corpus_embeddings = self.model.encode_corpus(
+        #             corpus[corpus_start_idx:corpus_end_idx],
+        #             batch_size=self.batch_size,
+        #             show_progress_bar=self.show_progress_bar, 
+        #             convert_to_tensor = self.convert_to_tensor
+        #             )
                 
-                all_sub_corpus_embedding_ls.append(sub_corpus_embeddings)
-        
+        #         all_sub_corpus_embedding_ls.append(sub_corpus_embeddings)
+                
         query_embeddings = [[torch.cat(item).to(device) for item in items] for items in query_embeddings]
-        all_sub_corpus_embedding_ls = [item.to(device) for item in all_sub_corpus_embedding_ls]
         
-        for sub_corpus_embeddings in tqdm(all_sub_corpus_embedding_ls):
-
+        for root_nodes in tqdm(all_sub_corpus_embedding_ls):
+            root_nodes = root_nodes[0]
             #Compute similarites using either cosine-similarity or dot product
             cos_scores = []
             # for query_itr in range(len(query_embeddings)):
             for query_itr in range(query_count):
                 curr_query_embedding_ls = query_embeddings[query_itr]
-                if type(curr_query_embedding_ls) is list:
-                    full_curr_scores_ls = []
-                    # for conj_id in range(len(curr_query_embedding)):
-                    #     curr_cos_scores_ls = self.score_functions[score_function](torch.stack(curr_query_embedding[conj_id]), sub_corpus_embeddings)
-                    #     if query_negations is not None and query_negations[query_itr] is not None:
-                    #         curr_query_negations = torch.tensor(query_negations[query_itr])
-                    #         curr_cos_scores_ls[curr_query_negations == 1] =  - curr_cos_scores_ls[curr_query_negations == 1]
+                # if type(curr_query_embedding_ls) is list:
+                full_curr_scores_ls = []
+                # for conj_id in range(len(curr_query_embedding)):
+                #     curr_cos_scores_ls = self.score_functions[score_function](torch.stack(curr_query_embedding[conj_id]), sub_corpus_embeddings)
+                #     if query_negations is not None and query_negations[query_itr] is not None:
+                #         curr_query_negations = torch.tensor(query_negations[query_itr])
+                #         curr_cos_scores_ls[curr_query_negations == 1] =  - curr_cos_scores_ls[curr_query_negations == 1]
 
-                    #     curr_cos_scores_ls[torch.isnan(curr_cos_scores_ls)] = -1
+                #     curr_cos_scores_ls[torch.isnan(curr_cos_scores_ls)] = -1
 
-                    #     curr_cos_scores = 1
-                    #     for idx in range(len(curr_cos_scores_ls)):
-                    #         curr_cos_scores *= curr_cos_scores_ls[idx]
-                    #     curr_scores += curr_cos_scores
-                    for curr_query_embedding in curr_query_embedding_ls:
-                        curr_scores = 1
-                        if len(sub_corpus_embeddings.shape) == 2 and sub_corpus_embeddings.shape[0] > 1:
-                            curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding, sub_corpus_embeddings), dim=-1)[0]
-                        else:    
-                            curr_scores_ls = self.score_functions[score_function](curr_query_embedding, sub_corpus_embeddings)
-                        for conj_id in range(len(curr_scores_ls)):
-                            curr_scores *= curr_scores_ls[conj_id]
-                        # full_curr_scores += curr_scores
-                        full_curr_scores_ls.append(curr_scores)
+                #     curr_cos_scores = 1
+                #     for idx in range(len(curr_cos_scores_ls)):
+                #         curr_cos_scores *= curr_cos_scores_ls[idx]
+                #     curr_scores += curr_cos_scores
+                for curr_query_embeddings in curr_query_embedding_ls:
+                    curr_scores = 1
+                    for curr_query_embedding in curr_query_embeddings:
+                        node = root_nodes
+                        
+                        curr_max_sim = -1
+                                                    
+                        while True:
+                            curr_sim, next_child = node.compare_query_embedding_and_children_embeddings(curr_query_embedding, device)
+                            if next_child is None:
+                                break
+                            if curr_sim > curr_max_sim:
+                                curr_max_sim = curr_sim
+                                curr_max_node = node
+                            node = next_child
+                        curr_scores *= curr_max_sim
                     
-                    curr_scores = torch.tensor(full_curr_scores_ls)
+                    # if len(sub_corpus_embeddings.shape) == 2 and sub_corpus_embeddings.shape[0] > 1:
+                    #     curr_scores_ls = torch.max(self.score_functions[score_function](torch.cat(curr_query_embeddings), sub_corpus_embeddings), dim=-1)[0]
+                    # else:    
+                    #     curr_scores_ls = self.score_functions[score_function](torch.cat(curr_query_embeddings), sub_corpus_embeddings)
+                    # for conj_id in range(len(curr_scores_ls)):
+                    #     curr_scores *= curr_scores_ls[conj_id]
+                    # full_curr_scores += curr_scores
+                    full_curr_scores_ls.append(curr_scores)
+                
+                curr_scores = torch.tensor(full_curr_scores_ls)
                     
-                else:
-                    # curr_cos_scores = self.score_functions[score_function](curr_query_embedding.unsqueeze(0), sub_corpus_embeddings)
-                    curr_cos_scores = self.score_functions[score_function](curr_query_embedding_ls, sub_corpus_embeddings)
-                    curr_cos_scores[torch.isnan(curr_cos_scores)] = -1
-                    curr_scores = curr_cos_scores.squeeze(0)
-                    if len(curr_scores) > 1:
-                        curr_scores = torch.max(curr_scores, dim=-1)[0]
-                    curr_scores = curr_scores.view(-1)
+                # else:
+                #     # curr_cos_scores = self.score_functions[score_function](curr_query_embedding.unsqueeze(0), sub_corpus_embeddings)
+                #     curr_cos_scores = self.score_functions[score_function](curr_query_embedding_ls, sub_corpus_embeddings)
+                #     curr_cos_scores[torch.isnan(curr_cos_scores)] = -1
+                #     curr_scores = curr_cos_scores.squeeze(0)
+                #     if len(curr_scores) > 1:
+                #         curr_scores = torch.max(curr_scores, dim=-1)[0]
+                #     curr_scores = curr_scores.view(-1)
                 cos_scores.append(curr_scores)
             cos_scores = torch.stack(cos_scores)
             all_cos_scores.append(cos_scores)
@@ -179,7 +191,7 @@ class DenseRetrievalExactSearch:
                top_k: List[int], 
                score_function: str,
                return_sorted: bool = False, 
-               query_negations: List=None, all_sub_corpus_embedding_ls=None, query_embeddings=None, query_count=10, batch_size=4, device='cuda',
+               query_negations: List=None, all_sub_corpus_embedding_ls=None, query_embeddings=None, query_count=10, device = 'cuda', batch_size=2,
                **kwargs) -> Dict[str, Dict[str, float]]:
         #Create embeddings for all queries using model.encode_queries()
         #Runs semantic search against the corpus embeddings
@@ -238,69 +250,127 @@ class DenseRetrievalExactSearch:
             query_count = len(query_embeddings)
 
         all_cos_scores = []
-        if all_sub_corpus_embedding_ls is None:
-            itr = range(0, len(corpus), self.corpus_chunk_size)
-            all_sub_corpus_embedding_ls = []
-            for batch_num, corpus_start_idx in enumerate(itr):
-                logger.info("Encoding Batch {}/{}...".format(batch_num+1, len(itr)))
-                corpus_end_idx = min(corpus_start_idx + self.corpus_chunk_size, len(corpus))
+        # if all_sub_corpus_embedding_ls is None:
+        #     itr = range(0, len(corpus), self.corpus_chunk_size)
+        #     all_sub_corpus_embedding_ls = []
+        #     for batch_num, corpus_start_idx in enumerate(itr):
+        #         logger.info("Encoding Batch {}/{}...".format(batch_num+1, len(itr)))
+        #         corpus_end_idx = min(corpus_start_idx + self.corpus_chunk_size, len(corpus))
 
-                #Encode chunk of corpus    
-                sub_corpus_embeddings = self.model.encode_corpus(
-                    corpus[corpus_start_idx:corpus_end_idx],
-                    batch_size=self.batch_size,
-                    show_progress_bar=self.show_progress_bar, 
-                    convert_to_tensor = self.convert_to_tensor
-                    )
+        #         #Encode chunk of corpus    
+        #         sub_corpus_embeddings = self.model.encode_corpus(
+        #             corpus[corpus_start_idx:corpus_end_idx],
+        #             batch_size=self.batch_size,
+        #             show_progress_bar=self.show_progress_bar, 
+        #             convert_to_tensor = self.convert_to_tensor
+        #             )
                 
-                all_sub_corpus_embedding_ls.append(sub_corpus_embeddings)
-        
+        #         all_sub_corpus_embedding_ls.append(sub_corpus_embeddings)
+                
         query_embeddings = [[torch.cat(item).to(device) for item in items] for items in query_embeddings]
         
-        # for sub_corpus_embeddings in tqdm(all_sub_corpus_embedding_ls):
-
+        # for root_nodes in tqdm(all_sub_corpus_embedding_ls):
+        def compute_cos_scores(root_nodes):
+            root_nodes = root_nodes[0]
             #Compute similarites using either cosine-similarity or dot product
-        def compute_cos_scores(sub_corpus_embeddings):
             cos_scores = []
             # for query_itr in range(len(query_embeddings)):
             for query_itr in range(query_count):
                 curr_query_embedding_ls = query_embeddings[query_itr]
-                if type(curr_query_embedding_ls) is list:
-                    full_curr_scores_ls = []
-                    # for conj_id in range(len(curr_query_embedding)):
-                    #     curr_cos_scores_ls = self.score_functions[score_function](torch.stack(curr_query_embedding[conj_id]), sub_corpus_embeddings)
-                    #     if query_negations is not None and query_negations[query_itr] is not None:
-                    #         curr_query_negations = torch.tensor(query_negations[query_itr])
-                    #         curr_cos_scores_ls[curr_query_negations == 1] =  - curr_cos_scores_ls[curr_query_negations == 1]
+                # if type(curr_query_embedding_ls) is list:
+                full_curr_scores_ls = []
+                # for conj_id in range(len(curr_query_embedding)):
+                #     curr_cos_scores_ls = self.score_functions[score_function](torch.stack(curr_query_embedding[conj_id]), sub_corpus_embeddings)
+                #     if query_negations is not None and query_negations[query_itr] is not None:
+                #         curr_query_negations = torch.tensor(query_negations[query_itr])
+                #         curr_cos_scores_ls[curr_query_negations == 1] =  - curr_cos_scores_ls[curr_query_negations == 1]
 
-                    #     curr_cos_scores_ls[torch.isnan(curr_cos_scores_ls)] = -1
+                #     curr_cos_scores_ls[torch.isnan(curr_cos_scores_ls)] = -1
 
-                    #     curr_cos_scores = 1
-                    #     for idx in range(len(curr_cos_scores_ls)):
-                    #         curr_cos_scores *= curr_cos_scores_ls[idx]
-                    #     curr_scores += curr_cos_scores
-                    for curr_query_embedding in curr_query_embedding_ls:
-                        curr_scores = 1
-                        if len(sub_corpus_embeddings.shape) == 2 and sub_corpus_embeddings.shape[0] > 1:
-                            curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding, sub_corpus_embeddings), dim=-1)[0]
-                        else:    
-                            curr_scores_ls = self.score_functions[score_function](curr_query_embedding, sub_corpus_embeddings)
-                        for conj_id in range(len(curr_scores_ls)):
-                            curr_scores *= curr_scores_ls[conj_id]
-                        # full_curr_scores += curr_scores
-                        full_curr_scores_ls.append(curr_scores)
+                #     curr_cos_scores = 1
+                #     for idx in range(len(curr_cos_scores_ls)):
+                #         curr_cos_scores *= curr_cos_scores_ls[idx]
+                #     curr_scores += curr_cos_scores
+                for curr_query_embeddings in curr_query_embedding_ls:
+                    curr_scores = 1
                     
-                    curr_scores = torch.tensor(full_curr_scores_ls)
+                    curr_max_sim_ls = []
                     
-                else:
-                    # curr_cos_scores = self.score_functions[score_function](curr_query_embedding.unsqueeze(0), sub_corpus_embeddings)
-                    curr_cos_scores = self.score_functions[score_function](curr_query_embedding_ls, sub_corpus_embeddings)
-                    curr_cos_scores[torch.isnan(curr_cos_scores)] = -1
-                    curr_scores = curr_cos_scores.squeeze(0)
-                    if len(curr_scores) > 1:
-                        curr_scores = torch.max(curr_scores, dim=-1)[0]
-                    curr_scores = curr_scores.view(-1)
-                cos_scores.append(curr_scores.cpu())
+                    for curr_query_embedding in curr_query_embeddings:
+                        node = root_nodes
+                        
+                        curr_max_sim = -1
+                                                    
+                        while True:
+                            curr_sim, next_child = node.compare_query_embedding_and_children_embeddings(curr_query_embedding, device)
+                            if next_child is None:
+                                break
+                            if curr_sim > curr_max_sim:
+                                curr_max_sim = curr_sim
+                                curr_max_node = node
+                            node = next_child
+                        curr_max_sim_ls.append(curr_max_sim)
+                    
+                    
+                    # def compute_sim_per_query(curr_query_embedding):
+                    
+                    # # for curr_query_embedding in curr_query_embeddings:
+                    #     node = root_nodes
+                        
+                    #     curr_max_sim = -1
+                                                    
+                    #     while True:
+                    #         curr_sim, next_child = node.compare_query_embedding_and_children_embeddings(curr_query_embedding, device)
+                    #         if next_child is None:
+                    #             break
+                    #         if curr_sim > curr_max_sim:
+                    #             curr_max_sim = curr_sim
+                    #             curr_max_node = node
+                    #         node = next_child
+                    #     return curr_max_sim
+                    
+                    # class LocalThread(threading.Thread):
+                    #     def __init__(self, param):
+                    #         threading.Thread.__init__(self)
+                    #         self.param = param
+                    #         self.result = None
+
+                    #     def run(self):
+                    #         self.result = compute_sim_per_query(self.param)
+                    
+                    # local_threads = []
+                    # for sub_idx in range(len(curr_query_embeddings)):    
+                    #     thread = LocalThread(curr_query_embeddings[sub_idx])
+                    #     # thread = threading.Thread(target=compute_cos_scores, args=(all_sub_corpus_embedding_tuple_ls[sub_idx],))
+                    #     thread.start()
+                    #     local_threads.append(thread)
+                    # for thread in local_threads:
+                    #     thread.join()
+                    #     curr_max_sim_ls.append(thread.result)
+                        
+                    for curr_max_sim in curr_max_sim_ls:
+                        curr_scores *= curr_max_sim
+                    
+                    # if len(sub_corpus_embeddings.shape) == 2 and sub_corpus_embeddings.shape[0] > 1:
+                    #     curr_scores_ls = torch.max(self.score_functions[score_function](torch.cat(curr_query_embeddings), sub_corpus_embeddings), dim=-1)[0]
+                    # else:    
+                    #     curr_scores_ls = self.score_functions[score_function](torch.cat(curr_query_embeddings), sub_corpus_embeddings)
+                    # for conj_id in range(len(curr_scores_ls)):
+                    #     curr_scores *= curr_scores_ls[conj_id]
+                    # full_curr_scores += curr_scores
+                    full_curr_scores_ls.append(curr_scores)
+                
+                curr_scores = torch.tensor(full_curr_scores_ls)
+                    
+                # else:
+                #     # curr_cos_scores = self.score_functions[score_function](curr_query_embedding.unsqueeze(0), sub_corpus_embeddings)
+                #     curr_cos_scores = self.score_functions[score_function](curr_query_embedding_ls, sub_corpus_embeddings)
+                #     curr_cos_scores[torch.isnan(curr_cos_scores)] = -1
+                #     curr_scores = curr_cos_scores.squeeze(0)
+                #     if len(curr_scores) > 1:
+                #         curr_scores = torch.max(curr_scores, dim=-1)[0]
+                #     curr_scores = curr_scores.view(-1)
+                cos_scores.append(curr_scores)
             cos_scores = torch.stack(cos_scores)
             return cos_scores
         
@@ -312,14 +382,7 @@ class DenseRetrievalExactSearch:
 
             def run(self):
                 self.result = compute_cos_scores(self.param)
-        
-        # Create a ThreadPoolExecutor with a maximum of 4 worker threads
-        # with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
-        
-        # all_cos_scores = Parallel(n_jobs=16)(delayed(compute_cos_scores)(item) for item in all_sub_corpus_embedding_ls)
-        
-        all_cos_scores = []
-        all_sub_corpus_embedding_ls = [item.to(device) for item in all_sub_corpus_embedding_ls]
+                
         for idx in range(0, len(all_sub_corpus_embedding_ls), batch_size):
             all_sub_corpus_embedding_tuple_ls = all_sub_corpus_embedding_ls[idx:idx+batch_size]
             threads = []
@@ -331,11 +394,7 @@ class DenseRetrievalExactSearch:
             for thread in threads:
                 thread.join()
                 all_cos_scores.append(thread.result)
-        # with multiprocessing.Pool() as pool:
-        #     # Submit the tasks to the executor
-        #     # The map function will apply the process_item function to each item in parallel
-        #     all_cos_scores = list(pool.map(compute_cos_scores, all_sub_corpus_embedding_ls))
-        # all_cos_scores.append(cos_scores)
+            # all_cos_scores.append(cos_scores)
         
         all_cos_scores_tensor = torch.stack(all_cos_scores, dim=-1)
         all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)

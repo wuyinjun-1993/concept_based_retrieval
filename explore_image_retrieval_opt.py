@@ -6,6 +6,7 @@ from sklearn.metrics import top_k_accuracy_score
 from beir.retrieval.evaluation import EvaluateRetrieval
 from retrieval_utils import *
 from beir.retrieval.search.dense import DenseRetrievalExactSearch as DRES
+from beir.retrieval.search.dense import DenseRetrievalExactSearch_over_trees as DRES_over_trees
 from beir.retrieval import models
 from beir import LoggingHandler
 from datasets import load_dataset
@@ -14,6 +15,7 @@ from beir import util, LoggingHandler
 from beir.datasets.data_loader import GenericDataLoader
 import time
 # from beir.retrieval.models.clip_model import clip_model
+from storage import *
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe"]
 
@@ -29,7 +31,14 @@ def convert_samples_to_concepts(args, model, images, processor, device, patch_co
     # masks_ls = []
     # img_per_batch_ls = []
     # bboxes_ls = []
-    img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_batch_ls = cl.get_patches_by_hierarchies(images=images, method="slic", compute_img_emb=True)
+    if args.img_concept:
+        if not args.tree_concept:
+            img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_batch_ls = cl.get_patches_by_hierarchies(images=images, method="slic", compute_img_emb=True, partition_strategy=args.partition_strategy, extend_size=args.extend_size, depth_lim=args.depth_lim)
+        else:
+            root_node_ls = cl.get_patches_by_hierarchies_by_trees(images=images, method="slic", compute_img_emb=True, partition_strategy=args.partition_strategy, extend_size=args.extend_size, depth_lim=args.depth_lim)
+    else:
+        img_emb = get_image_embeddings(images, cl.input_processor, cl.input_to_latent, cl.model)
+        patch_emb_ls, masks_ls, bboxes_ls, img_per_batch_ls = None, None, None, None
     # for idx in range(len(patch_count_ls)):
     #     patch_count = patch_count_ls[idx]
     #     if idx == 0:
@@ -43,7 +52,10 @@ def convert_samples_to_concepts(args, model, images, processor, device, patch_co
     #     masks_ls.append(masks)
     #     img_per_batch_ls.append(img_per_patch)
     #     bboxes_ls.append(bboxes)
-    return img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_batch_ls
+    if args.img_concept and args.tree_concept:
+        return root_node_ls
+    else:    
+        return img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_batch_ls
 
 def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb):
     img_per_patch_tensor = torch.tensor(img_per_patch_ls[0])
@@ -138,7 +150,12 @@ def parse_args():
     parser.add_argument('--query_count', type=int, default=-1, help='config file')
     parser.add_argument('--query_concept', action="store_true", help='config file')
     parser.add_argument('--img_concept', action="store_true", help='config file')
-    parser.add_argument('--total_count', type=int, default=50, help='config file')
+    parser.add_argument('--tree_concept', action="store_true", help='config file')
+    parser.add_argument('--total_count', type=int, default=500, help='config file')
+    parser.add_argument('--partition_strategy', type=str, default="one", help='config file')
+    parser.add_argument('--extend_size', type=int, default=5, help='config file')
+    parser.add_argument("--parallel", action="store_true", help="config file")
+    parser.add_argument('--depth_lim', type=int, default=5, help='config file')
     args = parser.parse_args()
     return args
 
@@ -213,7 +230,10 @@ if __name__ == "__main__":
         patch_count_ls = [32, 64, 128]
     
     if args.dataset_name in image_retrieval_datasets:
-        img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
+        if args.img_concept and args.tree_concept:
+            root_nodes_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
+        else:    
+            img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
     else:
         img_emb = text_model.encode_corpus(corpus)
 
@@ -243,7 +263,11 @@ if __name__ == "__main__":
         qrels = construct_qrels(filename_ls, query_count=args.query_count)
     else:
         qrels = construct_qrels(queries, query_count=args.query_count)
-    retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
+    
+    if not args.tree_concept:
+        retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
+    else:
+        retrieval_model = DRES_over_trees(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
     retriever = EvaluateRetrieval(retrieval_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
     
     # if args.query_concept:
@@ -251,7 +275,10 @@ if __name__ == "__main__":
     if not args.img_concept:
         retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count)
     else:
-        retrieve_by_embeddings(retriever, patch_emb_ls, text_emb_ls, qrels, query_count=args.query_count)
+        if not args.tree_concept:
+            retrieve_by_embeddings(retriever, patch_emb_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
+        else:
+            retrieve_by_embeddings(retriever, root_nodes_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
     
     t2 = time.time()
     
