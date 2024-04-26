@@ -657,7 +657,7 @@ class ConceptLearner:
         utils.save((image_embs, patch_activations, masks, bboxes, img_for_patch), f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl")
         return image_embs, patch_activations, masks, bboxes, img_for_patch
     
-    def get_patches_by_hierarchies(self, images=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True, depth_lim=5, partition_strategy="one", extend_size=0):
+    def get_patches_by_hierarchies(self, images=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True, depth_lim=5, partition_strategy="one", extend_size=0, recompute_img_emb=False):
         """Get patches from images using different segmentation methods."""
         if images is None:
             images = self.samples
@@ -665,7 +665,7 @@ class ConceptLearner:
         samples_hash = utils.hashfn(images)
         
         cached_file_name=f"output/saved_patches_hierarchy_{method}_{partition_strategy}_{depth_lim}_{extend_size}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
-        if os.path.exists(cached_file_name):
+        if os.path.exists(cached_file_name) and not recompute_img_emb:
             print("Loading cached patches")
             print(samples_hash)
             image_embs, patch_activations, masks, bboxes, img_for_patch = utils.load(cached_file_name)

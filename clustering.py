@@ -67,17 +67,46 @@ def compute_similarities_by_batches(X, k, centroids, device = 'cuda', batch_size
     return similarities
 
 
-def select_patch_embeddings_closest_to_centroids(unique_sub_sample_ids, sub_X, sub_sample_ids, mean_sub_X):
+def select_patch_embeddings_closest_to_centroids(unique_sub_sample_ids, sub_X, sub_sample_ids, sub_sample_patch_ids, sub_sample_granularity_ids):
     most_similar_sample_ls = []
+    most_similar_patch_ids_ls = []
+    most_similar_granularity_ids_ls = []
+    most_similar_sample_ids_ls = []
     for unique_sub_sample_id in unique_sub_sample_ids:
         curr_sub_X = sub_X[sub_sample_ids == unique_sub_sample_id]
-        curr_sub_X_centroid_sims = F.cosine_similarity(curr_sub_X, mean_sub_X.view(1,-1))
-        most_similar_patch_id_curr_sample = torch.argmax(curr_sub_X_centroid_sims, dim=0)
-        most_similar_sample_ls.append(curr_sub_X[most_similar_patch_id_curr_sample])
-    return torch.stack(most_similar_sample_ls)
+        curr_sub_sample_patch_ids = sub_sample_patch_ids[sub_sample_ids == unique_sub_sample_id]
+        curr_sub_sample_granularity_ids = sub_sample_granularity_ids[sub_sample_ids == unique_sub_sample_id]
+        # curr_sub_X_centroid_sims = F.cosine_similarity(curr_sub_X, mean_sub_X.view(1,-1))
+        # most_similar_patch_id_curr_sample = torch.argmax(curr_sub_X_centroid_sims, dim=0)
+        # most_similar_sample_ls.append(curr_sub_X[most_similar_patch_id_curr_sample])
+        
+        most_similar_sample_ls.append(torch.mean(curr_sub_X, dim=0))
+        most_similar_patch_ids_ls.extend(curr_sub_sample_patch_ids.tolist())
+        most_similar_granularity_ids_ls.extend(curr_sub_sample_granularity_ids.tolist())
+        most_similar_sample_ids_ls.extend([unique_sub_sample_id]*len(curr_sub_X))
+    return torch.stack(most_similar_sample_ls), most_similar_patch_ids_ls, most_similar_granularity_ids_ls, most_similar_sample_ids_ls
         
 
-def clustering_determine_k(X_ls, img_per_patch_ls, max_k=2000, max_deg = 20):
+def construct_sample_patch_ids_ls(all_bboxes_ls):
+    sample_sub_ids_ls = []
+    sample_granularity_ids_ls = []
+    for idx in range(len(all_bboxes_ls)):
+        bboxes_ls = all_bboxes_ls[idx]
+        curr_sample_sub_ids_ls = []
+        for sub_idx in range(len(bboxes_ls)):
+            if idx == 5 and sub_idx == 658:
+                print("here")
+            bboxes = bboxes_ls[sub_idx]
+            curr_sample_sub_ids_ls.extend(list(range(len(bboxes))))
+        
+        
+        sample_sub_ids_ls.append(torch.tensor(curr_sample_sub_ids_ls))
+        sample_granularity_ids_ls.append(torch.ones(len(curr_sample_sub_ids_ls))*idx)
+        
+    return sample_sub_ids_ls, sample_granularity_ids_ls
+        
+
+def clustering_determine_k(X_ls, all_bboxes_ls, img_per_patch_ls, max_k=2000, max_deg = 20):
     """
     Determine the optimal number of clusters using the elbow method.
 
@@ -91,12 +120,15 @@ def clustering_determine_k(X_ls, img_per_patch_ls, max_k=2000, max_deg = 20):
     inertias = []
     X = torch.cat(X_ls, dim=0)
     img_per_patch_tensor = torch.cat([torch.tensor(img_per_patch).view(-1) for img_per_patch in img_per_patch_ls])
+    sample_patch_ids_ls, sample_granularity_ids_ls = construct_sample_patch_ids_ls(all_bboxes_ls)
+    sample_patch_ids_tensor = torch.cat(sample_patch_ids_ls)
+    sample_granularity_ids_tensor = torch.cat(sample_granularity_ids_ls)
     # X = X_ls[0]
     X = X/ torch.norm(X, dim=1, keepdim=True)
     
     # clustering = AgglomerativeClustering(n_clusters=None, metric="cosine", linkage="complete", distance_threshold=0.1).fit(X.cpu().numpy())
     
-    clustering = Birch(threshold=0.4, n_clusters=None).fit(X.cpu().numpy())
+    clustering = Birch(threshold=0.5, n_clusters=None).fit(X.cpu().numpy())
 
     cosine_sim_min_ls = []
     cosine_sim_mat_ls = []
@@ -108,10 +140,15 @@ def clustering_determine_k(X_ls, img_per_patch_ls, max_k=2000, max_deg = 20):
     cluster_centroid_ls = []
     cluster_sample_count_ls = []
     cluster_sample_ids_ls = []
+    cluster_unique_sample_ids_ls = []
     cluster_sub_X_tensor_ls = []
+    cluster_sub_X_patch_ids_ls=[]
+    cluster_sub_X_granularity_ids_ls = []
     for label in tqdm(np.unique(clustering.labels_)):
         sub_X = X[clustering.labels_ == label]      
         sub_sample_ids = img_per_patch_tensor[clustering.labels_ == label]
+        sub_sample_patch_ids = sample_patch_ids_tensor[clustering.labels_ == label]
+        sub_sample_granularity_ids = sample_granularity_ids_tensor[clustering.labels_ == label]
         
         mean_sub_X = sub_X.mean(0).unsqueeze(0)
         cosine_sim_mat = torch.mm(sub_X, sub_X.t())
@@ -137,16 +174,19 @@ def clustering_determine_k(X_ls, img_per_patch_ls, max_k=2000, max_deg = 20):
         
         unique_sub_sample_ids = sub_sample_ids.unique()
         
-        most_similar_sub_X_tensor = select_patch_embeddings_closest_to_centroids(unique_sub_sample_ids, sub_X, sub_sample_ids, mean_sub_X)
+        most_similar_sub_X_tensor, most_similar_patch_ids_ls, most_similar_granularity_ids_ls, most_similar_sample_ids_ls = select_patch_embeddings_closest_to_centroids(unique_sub_sample_ids, sub_X, sub_sample_ids, sub_sample_patch_ids, sub_sample_granularity_ids)
         
         
         cluster_sample_count_ls.append(len(sub_sample_ids.unique()))
-        cluster_sample_ids_ls.append(unique_sub_sample_ids)
+        cluster_unique_sample_ids_ls.append(unique_sub_sample_ids)
+        cluster_sample_ids_ls.append(most_similar_sample_ids_ls)
         cluster_sub_X_tensor_ls.append(most_similar_sub_X_tensor)
+        cluster_sub_X_patch_ids_ls.append(most_similar_patch_ids_ls)
+        cluster_sub_X_granularity_ids_ls.append(most_similar_granularity_ids_ls)
         
     cluster_centroid_tensor = torch.cat(cluster_centroid_ls, dim=0)
     
-    return cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls
+    return cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls
     
     # for k in range(1000, max_k + 1, 100):
     #     centroids, cluster_assignments, max_similarity = kmeans_cosine(X, k)

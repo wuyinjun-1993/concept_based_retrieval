@@ -210,12 +210,15 @@ if __name__ == "__main__":
     if not args.query_concept:    
         patch_count_ls = [4, 8]
     else:
-        patch_count_ls = [32, 64, 128]
+        patch_count_ls = [4, 8, 16, 32, 64, 128]
     
     if args.dataset_name in image_retrieval_datasets:
         img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
         if args.search_by_cluster:
-            clustering, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls = clustering_determine_k(patch_emb_ls, img_per_patch_ls)
+            cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls = clustering_determine_k(patch_emb_ls, bboxes_ls, img_per_patch_ls)
+            # f"output/saved_patches_{method}_{n_patches}_{samples_hash}
+            patch_clustering_info_cached_file = f"output/saved_cluster_info"
+            utils.save((cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls), patch_clustering_info_cached_file, cluster_sub_X_granularity_ids_ls)
     else:
         img_emb = text_model.encode_corpus(corpus)
 
@@ -248,7 +251,8 @@ if __name__ == "__main__":
     retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
     retriever = EvaluateRetrieval(retrieval_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
     
-    text_emb_ls = [[torch.cat(item) for item in items] for items in text_emb_ls]
+    if args.query_concept:
+        text_emb_ls = [[torch.cat(item) for item in items] for items in text_emb_ls]
     
     # if args.query_concept:
     t1 = time.time()
@@ -259,7 +263,7 @@ if __name__ == "__main__":
         if not args.search_by_cluster:
             retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
         else:
-            retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(clustering, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls))
+            retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls))
     
     t2 = time.time()
     

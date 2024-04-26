@@ -19,7 +19,7 @@ from storage import *
 import cProfile
 import pstats
 import io
-
+from clustering import *
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe"]
 
@@ -37,7 +37,7 @@ def convert_samples_to_concepts(args, model, images, processor, device, patch_co
     # bboxes_ls = []
     if args.img_concept:
         if not args.tree_concept:
-            img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_batch_ls = cl.get_patches_by_hierarchies(images=images, method="slic", compute_img_emb=True, partition_strategy=args.partition_strategy, extend_size=args.extend_size, depth_lim=args.depth_lim)
+            img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_batch_ls = cl.get_patches_by_hierarchies(images=images, method="slic", compute_img_emb=True, partition_strategy=args.partition_strategy, extend_size=args.extend_size, depth_lim=args.depth_lim, recompute_img_emb = args.recompute_img_emb)
         else:
             root_node_ls = cl.get_patches_by_hierarchies_by_trees(images=images, method="slic", compute_img_emb=True, partition_strategy=args.partition_strategy, extend_size=args.extend_size, depth_lim=args.depth_lim)
     else:
@@ -162,6 +162,8 @@ def parse_args():
     parser.add_argument("--in_disk", action="store_true", help="config file")
     parser.add_argument("--parallel", action="store_true", help="config file")
     parser.add_argument('--depth_lim', type=int, default=5, help='config file')
+    parser.add_argument("--search_by_cluster", action="store_true", help="config file")
+    parser.add_argument("--recompute_img_emb", action="store_true", help="config file")
     args = parser.parse_args()
     return args
 
@@ -247,6 +249,8 @@ if __name__ == "__main__":
                 util.store_all_node_trees(args.store_path, root_nodes_ls)        
         else:    
             img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
+            if args.search_by_cluster:
+                cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls = clustering_determine_k(patch_emb_ls, img_per_patch_ls)
             if args.in_disk:
                 util.store_all_embeddings(args.store_path, patch_emb_ls)
     else:
@@ -254,7 +258,7 @@ if __name__ == "__main__":
 
     
     # if args.img_concept:
-    #     patch_emb_by_img_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb)
+    #     patch_emb_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb)
     
     if args.query_concept:
         if not args.dataset_name == "crepe":
@@ -284,7 +288,8 @@ if __name__ == "__main__":
     else:
         retrieval_model = DRES_over_trees(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
     retriever = EvaluateRetrieval(retrieval_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
-    text_emb_ls = [[torch.cat(item) for item in items] for items in text_emb_ls]
+    if args.query_concept:
+        text_emb_ls = [[torch.cat(item) for item in items] for items in text_emb_ls]
     # if args.query_concept:
     t1 = time.time()
     
@@ -296,7 +301,10 @@ if __name__ == "__main__":
         retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count)
     else:
         if not args.tree_concept:
-            retrieve_by_embeddings(retriever, patch_emb_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, in_disk=args.in_disk, store_path=args.store_path, corpus_count=len(patch_emb_ls))
+            if not args.search_by_cluster:
+                retrieve_by_embeddings(retriever, patch_emb_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, in_disk=args.in_disk, store_path=args.store_path, corpus_count=len(patch_emb_ls))
+            else:
+                retrieve_by_embeddings(retriever, patch_emb_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, in_disk=args.in_disk, store_path=args.store_path, corpus_count=len(patch_emb_ls), use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls))
         else:
             retrieve_by_embeddings(retriever, None, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, in_disk=args.in_disk, root_nodes_ls=root_nodes_ls, store_path=args.store_path)
     

@@ -180,7 +180,7 @@ class DenseRetrievalExactSearch:
                top_k: List[int], 
                score_function: str,
                return_sorted: bool = False, 
-               query_negations: List=None, all_sub_corpus_embedding_ls=None, query_embeddings=None, query_count=10, device = 'cuda', clustering_info=None, topk_embs = 100,
+               query_negations: List=None, all_sub_corpus_embedding_ls=None, query_embeddings=None, query_count=10, device = 'cuda', clustering_info=None, topk_embs = 500,
                **kwargs) -> Dict[str, Dict[str, float]]:
         #Create embeddings for all queries using model.encode_queries()
         #Runs semantic search against the corpus embeddings
@@ -262,6 +262,8 @@ class DenseRetrievalExactSearch:
         
         all_cos_scores_tensor = torch.zeros((len(all_sub_corpus_embedding_ls), len(query_embeddings[0]),  query_count), device=device)
         
+        topk_embs = min(topk_embs, len(all_sub_corpus_embedding_ls))
+        
         for query_itr in tqdm(range(query_count)):
             curr_query_embedding_ls = query_embeddings[query_itr]
             if type(curr_query_embedding_ls) is list:
@@ -304,7 +306,7 @@ class DenseRetrievalExactSearch:
                         
                         curr_scores_mat_curr_cluster = torch.prod(curr_scores_mat_curr_cluster, dim=0)
                         
-                        all_cos_scores_tensor[curr_cluster_sample_ids, sub_query_itr, query_itr] = (curr_scores_mat_curr_cluster > all_cos_scores_tensor[curr_cluster_sample_ids, sub_query_itr, query_itr])*curr_scores[cluster_id] \
+                        all_cos_scores_tensor[curr_cluster_sample_ids, sub_query_itr, query_itr] = (curr_scores_mat_curr_cluster > all_cos_scores_tensor[curr_cluster_sample_ids, sub_query_itr, query_itr])*curr_scores_mat_curr_cluster \
                             + (curr_scores_mat_curr_cluster <= all_cos_scores_tensor[curr_cluster_sample_ids, sub_query_itr, query_itr])*all_cos_scores_tensor[curr_cluster_sample_ids, sub_query_itr, query_itr]
                         
                         covered_sample_id_set.update(curr_cluster_sample_ids.tolist())
@@ -375,7 +377,7 @@ class DenseRetrievalExactSearch:
         #     all_cos_scores.append(cos_scores)
         
         # all_cos_scores_tensor = torch.stack(all_cos_scores, dim=-1)
-        all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
+        all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=0, keepdim=True)
         all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
         # all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
         #Get top-k values
