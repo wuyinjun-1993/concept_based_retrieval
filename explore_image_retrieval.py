@@ -215,13 +215,18 @@ if __name__ == "__main__":
     if args.dataset_name in image_retrieval_datasets:
         img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
         if args.search_by_cluster:
-            cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls = clustering_determine_k(patch_emb_ls, bboxes_ls, img_per_patch_ls)
-            # f"output/saved_patches_{method}_{n_patches}_{samples_hash}
-            patch_clustering_info_cached_file = f"output/saved_cluster_info"
-            utils.save((cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls), patch_clustering_info_cached_file, cluster_sub_X_granularity_ids_ls)
+            if args.img_concept:
+                cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls = clustering_img_patch_embeddings(patch_emb_ls, bboxes_ls, img_per_patch_ls)
+                # f"output/saved_patches_{method}_{n_patches}_{samples_hash}
+                patch_clustering_info_cached_file = f"output/saved_cluster_info"
+                utils.save((cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls), patch_clustering_info_cached_file, cluster_sub_X_granularity_ids_ls)
+            else:
+                cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls = clustering_img_embeddings(img_emb)
+
     else:
         img_emb = text_model.encode_corpus(corpus)
-
+        
+        
     patch_emb_by_img_ls = patch_emb_ls
     if args.img_concept:
         patch_emb_by_img_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb)
@@ -257,7 +262,10 @@ if __name__ == "__main__":
     # if args.query_concept:
     t1 = time.time()
     if not args.img_concept:
-        retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
+        if not args.search_by_cluster:
+            retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
+        else:
+            retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls))
     else:
         
         if not args.search_by_cluster:

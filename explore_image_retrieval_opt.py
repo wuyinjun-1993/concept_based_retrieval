@@ -250,7 +250,7 @@ if __name__ == "__main__":
         else:    
             img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
             if args.search_by_cluster:
-                cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls = clustering_determine_k(patch_emb_ls, img_per_patch_ls)
+                cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls = clustering_img_patch_embeddings(patch_emb_ls, img_per_patch_ls)
             if args.in_disk:
                 util.store_all_embeddings(args.store_path, patch_emb_ls)
     else:
