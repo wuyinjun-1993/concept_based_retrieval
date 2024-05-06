@@ -15,50 +15,15 @@ from beir.datasets.data_loader import GenericDataLoader
 import time
 # from beir.retrieval.models.clip_model import clip_model
 from clustering import *
+from text_utils import *
+import copy
+
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe"]
+text_retrieval_datasets = ["trec-covid"]
 
 
-def convert_samples_to_concepts(args, model, images, processor, device, patch_count_ls = [32]):
-    # samples: list[PIL.Image], labels, input_to_latent, input_processor, dataset_name, device: str = 'cpu'
-    # cl = ConceptLearner(images, labels, vit_forward, processor, img_processor, args.dataset_name, device)
-    cl = ConceptLearner(images, model, vit_forward, processor, args.dataset_name, device)
-    # bbox x1,y1,x2,y2
-    # image_embs, patch_activations, masks, bboxes, img_for_patch
-    # n_patches, images=None, method="slic", not_normalize=False
-    patch_emb_ls = []
-    masks_ls = []
-    img_per_batch_ls = []
-    bboxes_ls = []
-    for idx in range(len(patch_count_ls)):
-        patch_count = patch_count_ls[idx]
-        if idx == 0:
-            curr_img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, images=images, method="slic", compute_img_emb=True)
-        else:
-            curr_img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, images=images, method="slic", compute_img_emb=False)
-        if curr_img_emb is not None:
-            img_emb = curr_img_emb
-        patch_emb_ls.append(patch_emb)
-        masks_ls.append(masks)
-        img_per_batch_ls.append(img_per_patch)
-        bboxes_ls.append(bboxes)
-    return img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_batch_ls
 
-def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb):
-    img_per_patch_tensor = torch.tensor(img_per_patch_ls[0])
-    max_img_id = torch.max(img_per_patch_tensor).item()
-    patch_emb_curr_img_ls = []
-    for idx in tqdm(range(max_img_id + 1)):
-        sub_patch_emb_curr_img_ls = []
-        for sub_idx in range(len(patch_emb_ls)):
-            patch_emb = patch_emb_ls[sub_idx]
-            img_per_batch = img_per_patch_ls[sub_idx]
-            img_per_patch_tensor = torch.tensor(img_per_batch)
-            patch_emb_curr_img = patch_emb[img_per_patch_tensor == idx]
-            sub_patch_emb_curr_img_ls.append(patch_emb_curr_img)
-        sub_patch_emb_curr_img = torch.cat(sub_patch_emb_curr_img_ls, dim=0)
-        patch_emb_curr_img = torch.cat([img_emb[idx].unsqueeze(0), sub_patch_emb_curr_img], dim=0)
-        patch_emb_curr_img_ls.append(patch_emb_curr_img)
-    return patch_emb_curr_img_ls
+
     
 def embed_queries(filename_ls, filename_cap_mappings, processor, model, device):
     text_emb_ls = []
@@ -159,6 +124,8 @@ if __name__ == "__main__":
                     handlers=[LoggingHandler()])
 
     args = parse_args()
+    args.is_img_retrieval = args.dataset_name in image_retrieval_datasets
+
 
     # args.query_concept = False
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -172,8 +139,11 @@ if __name__ == "__main__":
     text_processor =  lambda text: raw_processor(text=[text], return_tensors="pt", padding=True, truncation=True)
     img_processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
     model = model.eval()
-    if args.dataset_name not in image_retrieval_datasets:
-        text_model = DRES(models.clip_model(text_processor, model, device), batch_size=16)
+    # if args.dataset_name not in image_retrieval_datasets:
+    if not args.is_img_retrieval:
+        # text_model = models.clip_model(text_processor, model, device)
+        text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b")
+        text_retrieval_model = DRES(text_model, batch_size=16)
         # retriever = EvaluateRetrieval(text_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
 
         # text_processor = AutoProcessor.from_pretrained("sentence-transformers/msmarco-distilbert-base-tas-b")
@@ -203,17 +173,29 @@ if __name__ == "__main__":
     elif args.dataset_name == "trec-covid":
         url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(args.dataset_name)
         data_path = util.download_and_unzip(url, full_data_path)
-        corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")
+        corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
+        subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
+        if False: #os.path.exists(subset_file_name):
+            corpus, qrels = utils.load(subset_file_name)
+        else:        
+            corpus, qrels = subset_corpus(corpus, qrels, args.total_count)
+            utils.save((corpus, qrels), subset_file_name)
+            
+        origin_corpus = None #copy.copy(corpus)
+        corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "crepe/"))
         # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "crepe/crepe_captions.txt"))
     
-    if not args.query_concept:    
-        patch_count_ls = [4, 8]
+    if args.is_img_retrieval:
+        if not args.query_concept:    
+            patch_count_ls = [4, 8]
+        else:
+            patch_count_ls = [4, 8, 16, 32, 64, 128]
     else:
-        patch_count_ls = [4, 8, 16, 32, 64, 128]
+        patch_count_ls = [1, 2, 4, 8, 16]
     
-    if args.dataset_name in image_retrieval_datasets:
-        img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
+    if args.is_img_retrieval:
+        img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
         if args.search_by_cluster:
             if args.img_concept:
                 cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls = clustering_img_patch_embeddings(patch_emb_ls, bboxes_ls, img_per_patch_ls)
@@ -223,36 +205,48 @@ if __name__ == "__main__":
             else:
                 cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls = clustering_img_embeddings(img_emb)
 
-    else:
-        img_emb = text_model.encode_corpus(corpus)
+    elif args.dataset_name in text_retrieval_datasets:
+        img_emb, patch_emb_ls = convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_count_ls=patch_count_ls)
+        # img_emb = text_model.encode_corpus(corpus)
         
         
     patch_emb_by_img_ls = patch_emb_ls
     if args.img_concept:
-        patch_emb_by_img_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb)
+        if args.is_img_retrieval:
+            patch_emb_by_img_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb)
+        else:
+            patch_emb_by_img_ls = reformat_patch_embeddings_txt(patch_emb_ls, img_emb)
     
-    if args.query_concept:
-        if not args.dataset_name == "crepe":
-            queries = [filename_cap_mappings[file] for file in filename_ls]
-            sub_queries_ls = decompose_queries_by_keyword(args.dataset_name, queries)
-            full_sub_queries_ls = [[sub_queries_ls[idx], [queries[idx]]] for idx in range(len(sub_queries_ls))]
+    if args.is_img_retrieval:
+        if args.query_concept:
+            if not args.dataset_name == "crepe":
+                queries = [filename_cap_mappings[file] for file in filename_ls]
+                sub_queries_ls = decompose_queries_by_keyword(args.dataset_name, queries)
+                full_sub_queries_ls = [[sub_queries_ls[idx], [queries[idx]]] for idx in range(len(sub_queries_ls))]
+            else:
+                # sub_queries_ls = decompose_queries_by_clauses(queries)
+                full_sub_queries_ls = [[sub_queries_ls[idx], [queries[idx]]] for idx in range(len(sub_queries_ls))]
+                # full_sub_queries_ls = [[sub_queries_ls[idx]] for idx in range(len(sub_queries_ls))]
+            text_emb_ls = embed_queries_ls(full_sub_queries_ls, text_processor, model, device)
+            # text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)
         else:
-            # sub_queries_ls = decompose_queries_by_clauses(queries)
-            full_sub_queries_ls = [[sub_queries_ls[idx], [queries[idx]]] for idx in range(len(sub_queries_ls))]
-            # full_sub_queries_ls = [[sub_queries_ls[idx]] for idx in range(len(sub_queries_ls))]
-        text_emb_ls = embed_queries_ls(full_sub_queries_ls, text_processor, model, device)
-        # text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)
+            if args.dataset_name == "flickr":
+                text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)
+            else:
+                text_emb_ls = embed_queries_with_input_queries(queries, text_processor, model, device)
     else:
-        if not args.dataset_name == "crepe":
-            text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)
+        if not args.query_concept:
+            text_emb_ls = text_retrieval_model.model.encode_queries(queries, convert_to_tensor=True)
+        
         else:
-            text_emb_ls = embed_queries_with_input_queries(queries, text_processor, model, device)
+            text_emb_ls = text_retrieval_model.model.encode_queries(queries, convert_to_tensor=True)
     
     # retrieve_by_full_query(img_emb, text_emb_ls)
-    if args.dataset_name == "flickr":
-        qrels = construct_qrels(filename_ls, query_count=args.query_count)
-    else:
-        qrels = construct_qrels(queries, query_count=args.query_count)
+    if args.is_img_retrieval:
+        if args.dataset_name == "flickr":
+            qrels = construct_qrels(filename_ls, query_count=args.query_count)
+        else:
+            qrels = construct_qrels(queries, query_count=args.query_count)
     retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
     retriever = EvaluateRetrieval(retrieval_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
     
@@ -263,19 +257,19 @@ if __name__ == "__main__":
     t1 = time.time()
     if not args.img_concept:
         if not args.search_by_cluster:
-            retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
+            retrieve_by_embeddings(retriever, origin_corpus, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
         else:
-            retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls))
+            retrieve_by_embeddings(retriever, origin_corpus, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls))
     else:
         
         if not args.search_by_cluster:
-            retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
+            retrieve_by_embeddings(retriever, origin_corpus, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
         else:
-            retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls))
+            retrieve_by_embeddings(retriever, origin_corpus, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls))
     
     t2 = time.time()
     
-    print(f"Time taken: {t2-t1:.2f}s")    
+    print(f"Time taken: {t2-t1:.2f}s")
     
     # else:
     #     retrieve_by_embeddings(retriever, text_emb_ls, img_emb, qrels)

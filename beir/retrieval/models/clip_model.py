@@ -27,7 +27,7 @@ class clip_model:
                 inputs = {key: val.to(self.device) for key, val in inputs.items()}
                 text_features = self.model.get_text_features(**inputs)
                 text_feature_ls.append(text_features.cpu())
-        return text_feature_ls
+        return torch.cat(text_feature_ls)
         # if isinstance(model_path, str):
         #     self.q_model = SentenceTransformer(model_path)
         #     self.doc_model = self.q_model
@@ -35,6 +35,15 @@ class clip_model:
         # elif isinstance(model_path, tuple):
         #     self.q_model = SentenceTransformer(model_path[0])
         #     self.doc_model = SentenceTransformer(model_path[1])
+    def convert_corpus_to_ls(self, corpus):
+        if type(corpus) is dict:
+                # sentences = [(corpus["title"][i] + self.sep + corpus["text"][i]).strip() if "title" in corpus else corpus["text"][i].strip() for i in range(len(corpus['text']))]
+            sentences = [corpus[i]["title"].strip() + self.sep + corpus[i]["text"].strip() if "title" in corpus[i] else corpus[i]["text"].strip() for i in corpus]
+        else:
+            sentences = [(doc["title"] + self.sep + doc["text"]).strip() if "title" in doc else doc["text"].strip() for doc in corpus]
+        
+        return sentences
+
     
     def start_multi_process_pool(self, target_devices: List[str] = None) -> Dict[str, object]:
         logger.info("Start multi-process pool on devices: {}".format(', '.join(map(str, target_devices))))
@@ -61,12 +70,18 @@ class clip_model:
         return self.encode_str_ls(queries)
     
     def encode_corpus(self, corpus: Union[List[Dict[str, str]], Dict[str, List]], batch_size: int = 8, **kwargs) -> Union[List[Tensor], np.ndarray, Tensor]:
-        if type(corpus) is dict:
-            sentences = [(corpus["title"][i] + self.sep + corpus["text"][i]).strip() if "title" in corpus else corpus["text"][i].strip() for i in range(len(corpus['text']))]
-        else:
-            sentences = [(doc["title"] + self.sep + doc["text"]).strip() if "title" in doc else doc["text"].strip() for doc in corpus]
+        # if type(corpus) is dict:
+        #     # sentences = [(corpus["title"][i] + self.sep + corpus["text"][i]).strip() if "title" in corpus else corpus["text"][i].strip() for i in range(len(corpus['text']))]
+        #     sentences = [corpus[i]["title"].strip() + self.sep + corpus[i]["text"].strip() if "title" in corpus[i] else corpus[i]["text"].strip() for i in corpus]
+        # else:
+        #     sentences = [(doc["title"] + self.sep + doc["text"]).strip() if "title" in doc else doc["text"].strip() for doc in corpus]
+        
+        sentences = self.convert_corpus_to_ls(corpus)
         # return self.doc_model.encode(sentences, batch_size=batch_size, **kwargs)
         return self.encode_str_ls(sentences)
+    
+    def encode_corpus_by_partitions(self, corpus: Union[List[Dict[str, str]], Dataset], batch_size: int = 8, partition_size: int = 100000, **kwargs) -> Union[List[Tensor], np.ndarray, Tensor]:
+        return 
 
     ## Encoding corpus in parallel
     def encode_corpus_parallel(self, corpus: Union[List[Dict[str, str]], Dataset], pool: Dict[str, str], batch_size: int = 8, chunk_id: int = None, **kwargs):

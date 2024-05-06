@@ -105,7 +105,9 @@ class DenseRetrievalExactSearch:
                     convert_to_tensor = self.convert_to_tensor
                     )
                 
-                all_sub_corpus_embedding_ls.append(sub_corpus_embeddings)
+                all_sub_corpus_embedding_ls.extend(sub_corpus_embeddings)
+                
+            # torch.save(all_sub_corpus_embedding_ls, 'output/all_sub_corpus_embedding_ls')
         
         # all_sub_corpus_embedding_ls = [item.to(device) for item in all_sub_corpus_embedding_ls]
         
@@ -145,7 +147,7 @@ class DenseRetrievalExactSearch:
                     
                 else:
                     # curr_cos_scores = self.score_functions[score_function](curr_query_embedding.unsqueeze(0), sub_corpus_embeddings)
-                    curr_cos_scores = self.score_functions[score_function](curr_query_embedding_ls, sub_corpus_embeddings)
+                    curr_cos_scores = self.score_functions[score_function](curr_query_embedding_ls.to(device), sub_corpus_embeddings.to(device))
                     curr_cos_scores[torch.isnan(curr_cos_scores)] = -1
                     curr_scores = curr_cos_scores.squeeze(0)
                     if len(curr_scores) > 1:

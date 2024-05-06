@@ -125,7 +125,7 @@ if __name__ == "__main__":
         patch_count_ls = [4, 8, 16, 32, 64, 128]
     
     if args.dataset_name in image_retrieval_datasets:
-        img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
+        img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
         if args.search_by_cluster:
             cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_unique_ids_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls = clustering_img_patch_embeddings(patch_emb_ls, bboxes_ls, img_per_patch_ls)
             # f"output/saved_patches_{method}_{n_patches}_{samples_hash}

@@ -98,7 +98,7 @@ def retrieve_with_decomposition(retriever, corpus, queries, qrels, out_dir, data
     return evaluate_for_query_batches(retriever, qrels, results), decomposed_queries
 
 
-def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, batch_size=16,in_disk=False, **kwargs):
+def retrieve_by_embeddings(retriever, corpus, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, batch_size=16,in_disk=False, **kwargs):
     print("results with decomposition::")
     # if parallel:
     #     all_sub_corpus_embedding_dataset= Partitioned_vector_dataset(all_sub_corpus_embedding_ls)
@@ -106,7 +106,7 @@ def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddi
     
     #     results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_loader, query_count=query_count, parallel=parallel)
     # else:
-    results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk, **kwargs)
+    results,_ = retriever.retrieve(corpus, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk, **kwargs)
     ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values, ignore_identical_ids=False)
     # print("start evaluating performance for single query with decomposition")
     # return evaluate_for_query_batches(retriever, qrels, results)

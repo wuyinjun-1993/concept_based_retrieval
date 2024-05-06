@@ -10,7 +10,10 @@ def hashfn(x: list):
     if type(x[0]) == PIL.Image.Image:
         samples_hash = hashlib.sha1(np.stack([img.resize((32, 32)) for img in tqdm(x)])).hexdigest()
     else:
-        samples_hash = hashlib.sha1(np.array(x)).hexdigest()
+        if type(x[0]) is not str:
+            samples_hash = hashlib.sha1(np.array(x)).hexdigest()
+        else:
+            samples_hash = hashlib.sha256(str(x).encode()).hexdigest()
     return samples_hash
 
 def load(filename):

@@ -6,6 +6,8 @@ import numpy as np
 import logging
 from datasets import Dataset
 from tqdm import tqdm
+import torch
+
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,8 @@ class SentenceBERT:
         return self.doc_model.stop_multi_process_pool(pool)
 
     def encode_queries(self, queries: List[str], batch_size: int = 16, **kwargs) -> Union[List[Tensor], np.ndarray, Tensor]:
+        if type(queries) is dict:
+            queries = [queries[str(i+1)] for i in range(len(queries))]
         return self.q_model.encode(queries, batch_size=batch_size, **kwargs)
     
     def encode_corpus(self, corpus: Union[List[Dict[str, str]], Dict[str, List]], batch_size: int = 8, **kwargs) -> Union[List[Tensor], np.ndarray, Tensor]:
@@ -51,6 +55,15 @@ class SentenceBERT:
         else:
             sentences = [(doc["title"] + self.sep + doc["text"]).strip() if "title" in doc else doc["text"].strip() for doc in corpus]
         return self.doc_model.encode(sentences, batch_size=batch_size, **kwargs)
+
+    def convert_corpus_to_ls(self, corpus):
+        if type(corpus) is dict:
+                # sentences = [(corpus["title"][i] + self.sep + corpus["text"][i]).strip() if "title" in corpus else corpus["text"][i].strip() for i in range(len(corpus['text']))]
+            sentences = [corpus[i]["title"].strip() + self.sep + corpus[i]["text"].strip() if "title" in corpus[i] else corpus[i]["text"].strip() for i in corpus]
+        else:
+            sentences = [(doc["title"] + self.sep + doc["text"]).strip() if "title" in doc else doc["text"].strip() for doc in corpus]
+        
+        return sentences
 
     ## Encoding corpus in parallel
     def encode_corpus_parallel(self, corpus: Union[List[Dict[str, str]], Dataset], pool: Dict[str, str], batch_size: int = 8, chunk_id: int = None, **kwargs):
@@ -65,3 +78,14 @@ class SentenceBERT:
 
         input_queue = pool['input']
         input_queue.put([chunk_id, batch_size, sentences])
+        
+    def encode_str_ls(self, str_ls, batch_size=8, **kwargs):
+        # text_feature_ls = []
+        with torch.no_grad():
+            text_feature_ls = self.doc_model.encode(str_ls, batch_size=batch_size, **kwargs)
+            # for sentence in tqdm(str_ls):
+            #     inputs = self.processor(sentence)
+            #     inputs = {key: val.to(self.device) for key, val in inputs.items()}
+            #     text_features = self.model.get_text_features(**inputs)
+            #     text_feature_ls.append(text_features.cpu())
+        return text_feature_ls

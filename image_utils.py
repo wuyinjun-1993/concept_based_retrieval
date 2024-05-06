@@ -830,3 +830,47 @@ def segment_all_images(data_folder, img_name_ls, split="train", sam_model_type="
         segment_mappings[img_name] = segment_mask_ls
     
     return image_mappings, segment_mappings
+
+
+def convert_samples_to_concepts_img(args, model, images, processor, device, patch_count_ls = [32]):
+    # samples: list[PIL.Image], labels, input_to_latent, input_processor, dataset_name, device: str = 'cpu'
+    # cl = ConceptLearner(images, labels, vit_forward, processor, img_processor, args.dataset_name, device)
+    cl = ConceptLearner(images, model, vit_forward, processor, args.dataset_name, device)
+    # bbox x1,y1,x2,y2
+    # image_embs, patch_activations, masks, bboxes, img_for_patch
+    # n_patches, images=None, method="slic", not_normalize=False
+    patch_emb_ls = []
+    masks_ls = []
+    img_per_batch_ls = []
+    bboxes_ls = []
+    for idx in range(len(patch_count_ls)):
+        patch_count = patch_count_ls[idx]
+        if idx == 0:
+            curr_img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, images=images, method="slic", compute_img_emb=True)
+        else:
+            curr_img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, images=images, method="slic", compute_img_emb=False)
+        if curr_img_emb is not None:
+            img_emb = curr_img_emb
+        patch_emb_ls.append(patch_emb)
+        masks_ls.append(masks)
+        img_per_batch_ls.append(img_per_patch)
+        bboxes_ls.append(bboxes)
+    return img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_batch_ls
+
+
+def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb):
+    img_per_patch_tensor = torch.tensor(img_per_patch_ls[0])
+    max_img_id = torch.max(img_per_patch_tensor).item()
+    patch_emb_curr_img_ls = []
+    for idx in tqdm(range(max_img_id + 1)):
+        sub_patch_emb_curr_img_ls = []
+        for sub_idx in range(len(patch_emb_ls)):
+            patch_emb = patch_emb_ls[sub_idx]
+            img_per_batch = img_per_patch_ls[sub_idx]
+            img_per_patch_tensor = torch.tensor(img_per_batch)
+            patch_emb_curr_img = patch_emb[img_per_patch_tensor == idx]
+            sub_patch_emb_curr_img_ls.append(patch_emb_curr_img)
+        sub_patch_emb_curr_img = torch.cat(sub_patch_emb_curr_img_ls, dim=0)
+        patch_emb_curr_img = torch.cat([img_emb[idx].unsqueeze(0), sub_patch_emb_curr_img], dim=0)
+        patch_emb_curr_img_ls.append(patch_emb_curr_img)
+    return patch_emb_curr_img_ls

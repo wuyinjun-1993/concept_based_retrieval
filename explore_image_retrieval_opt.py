@@ -24,7 +24,7 @@ from clustering import *
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe"]
 
 
-def convert_samples_to_concepts(args, model, images, processor, device, patch_count_ls = [32]):
+def convert_samples_to_concepts_img(args, model, images, processor, device, patch_count_ls = [32]):
     # samples: list[PIL.Image], labels, input_to_latent, input_processor, dataset_name, device: str = 'cpu'
     # cl = ConceptLearner(images, labels, vit_forward, processor, img_processor, args.dataset_name, device)
     cl = ConceptLearner(images, model, vit_forward, processor, args.dataset_name, device)
@@ -244,11 +244,11 @@ if __name__ == "__main__":
     
     if args.dataset_name in image_retrieval_datasets:
         if args.img_concept and args.tree_concept:
-            root_nodes_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
+            root_nodes_ls = convert_samples_to_concepts_img(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
             if args.in_disk:
                 util.store_all_node_trees(args.store_path, root_nodes_ls)        
         else:    
-            img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
+            img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
             if args.search_by_cluster:
                 cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls = clustering_img_patch_embeddings(patch_emb_ls, img_per_patch_ls)
             if args.in_disk:

@@ -14,6 +14,7 @@ import openai
 import json
 from tqdm import tqdm
 import torch
+from text_utils import subset_corpus
 
 # openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -359,7 +360,7 @@ data_path = util.download_and_unzip(url, out_dir)
 
 #### Provide the data_path where scifact has been downloaded and unzipped
 corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")
-
+# corpus, qrels = subset_corpus(corpus, qrels, 500)
 #### Load the SBERT model and retrieve using cosine-similarity
 # model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
 
@@ -379,17 +380,21 @@ model = model.eval()
 
 
 
-model = DRES(models.clip_model(text_processor, model, device), batch_size=16)
+# model = DRES(models.clip_model(text_processor, model, device), batch_size=16)
+model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
 retriever = EvaluateRetrieval(model, score_function="cos_sim") # or "cos_sim" for cosine similarity
 
 all_sub_corpus_embedding_ls=None
 
-cached_embedding_path = os.path.join(out_dir, "cached_embeddings")
+# cached_embedding_path = os.path.join(out_dir, "cached_embeddings")
+cached_embedding_path = os.path.join("output/all_sub_corpus_embedding_ls")
 
-if os.path.exists(cached_embedding_path):
-    all_sub_corpus_embedding_ls = torch.load(cached_embedding_path)
+# if os.path.exists(cached_embedding_path):
+#     all_sub_corpus_embedding_ls = torch.load(cached_embedding_path)
 
-results, all_sub_corpus_embedding_ls = retriever.retrieve(corpus, queries, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls)
+query_embeddings = model.model.encode_queries(queries, convert_to_tensor=True)
+
+results, all_sub_corpus_embedding_ls = retriever.retrieve(corpus, queries, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_embeddings=query_embeddings, query_count=-1)
 
 # if not os.path.exists(cached_embedding_path):
 #     torch.save(all_sub_corpus_embedding_ls, cached_embedding_path)
@@ -397,7 +402,7 @@ results, all_sub_corpus_embedding_ls = retriever.retrieve(corpus, queries, all_s
 # compute_decompositions_for_all_queries(retriever, corpus, qrels, out_dir, all_sub_corpus_embedding_ls)
 # single_q_res_no_decomposition = retrieve_without_decomposition(retriever, corpus, queries, qrels)
 
-single_q_res_with_decomposition, decomposed_queries = retrieve_with_decomposition(retriever, corpus, queries, qrels, out_dir, dataset)
+# single_q_res_with_decomposition, decomposed_queries = retrieve_with_decomposition(retriever, corpus, queries, qrels, out_dir, dataset)
 
 ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values)
 
@@ -413,12 +418,12 @@ ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_v
 
 # 
 
-new_results = retriever.retrieve(corpus, {"51": "change of weather", "52":"coronaviruses"})
+# new_results = retriever.retrieve(corpus, {"51": "change of weather", "52":"coronaviruses"})
 
 # #### Evaluate your model with NDCG@k, MAP@K, Recall@K and Precision@K  where k = [1,3,5,10,100,1000] 
 # print("results without decomposition::")
 
-ndcg, _map, recall, precision = retriever.evaluate({"2": qrels["2"], "3":qrels["2"]}, results, retriever.k_values)
+# ndcg, _map, recall, precision = retriever.evaluate({"2": qrels["2"], "3":qrels["2"]}, results, retriever.k_values)
 
 # new_merged_resuts = intersect_res(new_results)
 
