@@ -308,12 +308,12 @@ def evaluate_for_query_batches(qrels, results):
         all_results[key].update(precision)
     return all_results
 
-def retrieve_without_decomposition(retriever, corpus, queries, qrels):
+def retrieve_without_decomposition(retriever, corpus, queries, qrels, all_sub_corpus_embedding_ls=None):
     print("results without decomposition::")
-    results = retriever.retrieve(corpus, queries)
+    results, _ = retriever.retrieve(corpus, queries, query_count = len(queries), all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls)
     ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values)
     print("start evaluating performance for single query with no decomposition")
-    return evaluate_for_query_batches(qrels, results)
+    # return evaluate_for_query_batches(qrels, results)
 
 
 
@@ -358,9 +358,15 @@ url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip
 out_dir = "/data6/wuyinjun/beir/data/"
 data_path = util.download_and_unzip(url, out_dir)
 
+out_data_path="/data2/wuyinjun/trec-covid/"
+
 #### Provide the data_path where scifact has been downloaded and unzipped
 corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")
+
 # corpus, qrels = subset_corpus(corpus, qrels, 500)
+
+queries = {str(k): queries[str(k)] for k in range(1,4)}
+
 #### Load the SBERT model and retrieve using cosine-similarity
 # model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
 
@@ -396,15 +402,17 @@ query_embeddings = model.model.encode_queries(queries, convert_to_tensor=True)
 
 results, all_sub_corpus_embedding_ls = retriever.retrieve(corpus, queries, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_embeddings=query_embeddings, query_count=-1)
 
-# if not os.path.exists(cached_embedding_path):
-#     torch.save(all_sub_corpus_embedding_ls, cached_embedding_path)
+if not os.path.exists(cached_embedding_path):
+    torch.save(all_sub_corpus_embedding_ls, cached_embedding_path)
     
 # compute_decompositions_for_all_queries(retriever, corpus, qrels, out_dir, all_sub_corpus_embedding_ls)
-# single_q_res_no_decomposition = retrieve_without_decomposition(retriever, corpus, queries, qrels)
+# single_q_res_no_decomposition = 
+retrieve_without_decomposition(retriever, corpus, queries, qrels, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls)
 
-# single_q_res_with_decomposition, decomposed_queries = retrieve_with_decomposition(retriever, corpus, queries, qrels, out_dir, dataset)
+# single_q_res_with_decomposition, decomposed_queries = 
+retrieve_with_decomposition(retriever, corpus, queries, qrels, out_data_path, dataset, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls)
 
-ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values)
+# ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values)
 
 # output_res_to_files(out_dir, single_q_res_no_decomposition, single_q_res_with_decomposition, queries, decomposed_queries)
 

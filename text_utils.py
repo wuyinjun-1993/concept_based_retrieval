@@ -4,6 +4,7 @@ import utils
 from tqdm import tqdm
 
 import re
+import json
 
 class ConceptLearner_text:
     # def __init__(self, samples: list[PIL.Image], input_to_latent, input_processor, device: str = 'cpu'):
@@ -22,20 +23,22 @@ class ConceptLearner_text:
 
     
     def split_and_encoding_single_corpus(self, corpus, patch_count=4):
-        sentence_ls = [corpus["title"]]
+        sentence_ls = []
         # parser = re.compile(r"[.|\?|\!]")
         corpus_content = corpus["text"]
         corpus_content_split = re.split(r"[.|\?|\!]", corpus_content)
         corpus_content_split = [x.strip() for x in corpus_content_split if len(x) > 0]
+        corpus_content_split = [corpus["title"]] + corpus_content_split
+        
         
         for idx in range(len(corpus_content_split)):
-            sentence_ls.append(".".join(corpus_content_split[idx:idx+patch_count]))
+            sentence_ls.append(" ".join(corpus_content_split[idx:min(idx+patch_count, len(corpus_content_split))]))
             if idx+patch_count >= len(corpus_content_split):
                 break
         
         curr_corpus_embedding = self.model.encode_str_ls(sentence_ls, convert_to_tensor=True)
         
-        return curr_corpus_embedding
+        return curr_corpus_embedding.cpu()
         
     
     
@@ -49,17 +52,22 @@ class ConceptLearner_text:
             patch_activations = utils.load(cached_file_name)
             # if image_embs is None and compute_img_emb:
             #     image_embs = self.get_corpus_embeddings()
+            if type(patch_activations) is list:
+                patch_activations = [key.cpu() for key in patch_activations]
+            elif type(patch_activations) is dict:
+                patch_activations = [patch_activations[key].cpu() for key in range(len(patch_activations))]
+                utils.save(patch_activations, cached_file_name)
             return patch_activations
         
         # if compute_img_emb:
         #     image_embs = self.get_corpus_embeddings()
         
-        patch_activations = {}
+        patch_activations = []
         
         for key in range(len(self.corpus)):
             patch_activation = self.split_and_encoding_single_corpus(self.corpus[key], patch_count=patch_count)
             # patch_activations[key] = torch.cat(patch_activation)
-            patch_activations[key] = patch_activation
+            patch_activations.append(patch_activation)
         
         utils.save(patch_activations, cached_file_name)
         
@@ -79,8 +87,10 @@ def convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_coun
     
     if os.path.exists(corpus_embedding_file_name):
         img_emb = utils.load(corpus_embedding_file_name)
+        img_emb = img_emb.cpu()
     else:
         img_emb = text_model.encode_corpus(corpus,convert_to_tensor=True)    
+        img_emb = img_emb.cpu()
         utils.save(img_emb, corpus_embedding_file_name)
     
     if args.img_concept:
@@ -88,6 +98,11 @@ def convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_coun
         for idx in tqdm(range(len(patch_count_ls))):
             patch_count = patch_count_ls[idx]
             patch_activations = cl.get_patches(samples_hash, method="slic", patch_count=patch_count)
+            # cos_sim_ls = []
+            # for sub_idx in range(len(patch_activations)):
+            #     cos_sim = torch.nn.functional.cosine_similarity(img_emb[sub_idx].view(1,-1), patch_activations[sub_idx].view(1,-1)).item()
+            #     cos_sim_ls.append(cos_sim)
+            # print()
             patch_activation_ls.append(patch_activations)
         
         return img_emb, patch_activation_ls
@@ -137,6 +152,7 @@ def reformat_patch_embeddings_txt(patch_emb_ls, img_emb):
     # img_per_patch_tensor = torch.tensor(img_per_patch_ls[0])
     max_img_id = len(patch_emb_ls[0])
     patch_emb_curr_img_ls = []
+    cosin_sim_ls = []
     for idx in tqdm(range(max_img_id)):
         sub_patch_emb_curr_img_ls = []
         for sub_idx in range(len(patch_emb_ls)):
@@ -151,8 +167,43 @@ def reformat_patch_embeddings_txt(patch_emb_ls, img_emb):
         if len(curr_img_emb.shape) == 1:
             curr_img_emb = curr_img_emb.unsqueeze(0)
         
+        # patch_emb_curr_img = torch.cat([curr_img_emb, sub_patch_emb_curr_img], dim=0)
         patch_emb_curr_img = torch.cat([curr_img_emb, sub_patch_emb_curr_img], dim=0)
+        
+        # cosin_sim = torch.nn.functional.cosine_similarity(sub_patch_emb_curr_img.view(1,-1), curr_img_emb.view(1,-1))
+        # cosin_sim_ls.append(cosin_sim)
         patch_emb_curr_img_ls.append(patch_emb_curr_img)
     return patch_emb_curr_img_ls
 
+
+def read_queries_with_sub_queries_file(filename):
+    with open(filename, 'r') as json_file:
+        json_list = list(json_file)
+
+    queries = dict()
     
+    sub_queries_ls= dict()
+    idx = 1
+    for json_str in json_list:
+        result = json.loads(json_str)
+        if "sub_text" in result:
+            queries[str(idx)] = result["text"]
+            sub_queries_ls[str(idx)] = result["sub_text"]
+            
+        idx += 1
+        
+    return queries, sub_queries_ls
+
+def encode_sub_queries_ls(sub_queries_ls, text_model):
+    all_sub_queries_emb_ls = []
+    # for key in sub_queries_ls:
+    for key in range(len(sub_queries_ls)):
+        sub_queries_emb_ls=[]
+        key_str = str(key + 1)
+        for sub_key in range(len(sub_queries_ls[key_str])):
+            sub_queries = sub_queries_ls[key_str][sub_key]
+            sub_queries_emb = text_model.encode_str_ls(sub_queries, convert_to_tensor=True)
+            sub_queries_emb_ls.append(sub_queries_emb)
+        all_sub_queries_emb_ls.append(sub_queries_emb_ls)
+    
+    return all_sub_queries_emb_ls

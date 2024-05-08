@@ -174,13 +174,17 @@ if __name__ == "__main__":
         url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(args.dataset_name)
         data_path = util.download_and_unzip(url, full_data_path)
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
+        
+        queries, sub_queries_ls = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_subs.jsonl"))
+        
         subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
         if False: #os.path.exists(subset_file_name):
             corpus, qrels = utils.load(subset_file_name)
         else:        
             corpus, qrels = subset_corpus(corpus, qrels, args.total_count)
             utils.save((corpus, qrels), subset_file_name)
-            
+        
+        qrels = {key: qrels[key] for key in sub_queries_ls}
         origin_corpus = None #copy.copy(corpus)
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "crepe/"))
@@ -192,7 +196,8 @@ if __name__ == "__main__":
         else:
             patch_count_ls = [4, 8, 16, 32, 64, 128]
     else:
-        patch_count_ls = [1, 2, 4, 8, 16]
+        # patch_count_ls = [8, 16, 24, 32]
+        patch_count_ls = [1, 16, 8, 4, 2]
     
     if args.is_img_retrieval:
         img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
@@ -239,7 +244,8 @@ if __name__ == "__main__":
             text_emb_ls = text_retrieval_model.model.encode_queries(queries, convert_to_tensor=True)
         
         else:
-            text_emb_ls = text_retrieval_model.model.encode_queries(queries, convert_to_tensor=True)
+            text_emb_ls = encode_sub_queries_ls(sub_queries_ls, text_retrieval_model.model)
+            # text_emb_ls = text_retrieval_model.model.encode_queries(queries, convert_to_tensor=True)
     
     # retrieve_by_full_query(img_emb, text_emb_ls)
     if args.is_img_retrieval:
@@ -251,7 +257,8 @@ if __name__ == "__main__":
     retriever = EvaluateRetrieval(retrieval_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
     
     if args.query_concept:
-        text_emb_ls = [[torch.cat(item) for item in items] for items in text_emb_ls]
+        if args.is_img_retrieval:
+            text_emb_ls = [[torch.cat(item) for item in items] for items in text_emb_ls]
     
     # if args.query_concept:
     t1 = time.time()

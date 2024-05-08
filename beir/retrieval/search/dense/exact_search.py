@@ -67,9 +67,9 @@ class DenseRetrievalExactSearch:
                         curr_conjunct = []
                         for j in range(len(curr_query[k])):
                             qe = self.model.encode_queries(
-                                curr_query[k][j], batch_size=self.batch_size, show_progress_bar=self.show_progress_bar, convert_to_tensor=self.convert_to_tensor)
+                                [curr_query[k][j]], batch_size=self.batch_size, show_progress_bar=self.show_progress_bar, convert_to_tensor=self.convert_to_tensor)
                             curr_conjunct.append(qe)
-                        curr_query_embedding_ls.append(curr_conjunct)
+                        curr_query_embedding_ls.append(torch.cat(curr_conjunct))
                 query_embeddings.append(curr_query_embedding_ls)
           
         logger.info("Sorting Corpus by document length (Longest first)...")
@@ -135,13 +135,17 @@ class DenseRetrievalExactSearch:
                     for curr_query_embedding in curr_query_embedding_ls:
                         curr_scores = 1
                         if len(sub_corpus_embeddings.shape) == 2 and sub_corpus_embeddings.shape[0] > 1:
-                            curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
+                            # curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
+                            curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
                         else:    
                             curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))
-                        for conj_id in range(len(curr_scores_ls)):
-                            curr_scores *= curr_scores_ls[conj_id]
+                        
+                        curr_scores = torch.max(torch.prod(curr_scores_ls, dim=0))
+                        # curr_scores = torch.prod(curr_scores_ls, dim=0)
+                        # for conj_id in range(len(curr_scores_ls)):
+                        #     curr_scores *= curr_scores_ls[conj_id]
                         # full_curr_scores += curr_scores
-                        full_curr_scores_ls.append(curr_scores)
+                        full_curr_scores_ls.append(curr_scores.item())
                     
                     curr_scores = torch.tensor(full_curr_scores_ls)
                     

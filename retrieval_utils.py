@@ -75,7 +75,7 @@ def evaluate_for_query_batches(retriever, qrels, results):
     ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values)
     # return all_results
 
-def retrieve_with_decomposition(retriever, corpus, queries, qrels, out_dir, dataset_name):
+def retrieve_with_decomposition(retriever, corpus, queries, qrels, out_dir, dataset_name, all_sub_corpus_embedding_ls=None):
     print("results with decomposition::")
     decomposed_queries = dict()
     
@@ -92,10 +92,10 @@ def retrieve_with_decomposition(retriever, corpus, queries, qrels, out_dir, data
         with open(dq_file_name, "r") as f:
             decomposed_queries = json.load(f)
 
-    results = retriever.retrieve(corpus, decomposed_queries)
+    results, _ = retriever.retrieve(corpus, decomposed_queries, query_count = len(queries), all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls)
     ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values)
     print("start evaluating performance for single query with decomposition")
-    return evaluate_for_query_batches(retriever, qrels, results), decomposed_queries
+    # return evaluate_for_query_batches(retriever, qrels, results), decomposed_queries
 
 
 def retrieve_by_embeddings(retriever, corpus, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, batch_size=16,in_disk=False, **kwargs):
