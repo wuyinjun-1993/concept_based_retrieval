@@ -6,6 +6,7 @@ from sklearn.metrics import top_k_accuracy_score
 from beir.retrieval.evaluation import EvaluateRetrieval
 from retrieval_utils import *
 from beir.retrieval.search.dense import DenseRetrievalExactSearch as DRES
+from beir.retrieval.search.dense.exact_search import one, two
 from beir.retrieval import models
 from beir import LoggingHandler
 from datasets import load_dataset
@@ -143,7 +144,7 @@ if __name__ == "__main__":
     if not args.is_img_retrieval:
         # text_model = models.clip_model(text_processor, model, device)
         text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b")
-        text_retrieval_model = DRES(text_model, batch_size=16)
+        text_retrieval_model = DRES(text_model, batch_size=16, algebra_method=one)
         # retriever = EvaluateRetrieval(text_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
 
         # text_processor = AutoProcessor.from_pretrained("sentence-transformers/msmarco-distilbert-base-tas-b")
@@ -159,6 +160,8 @@ if __name__ == "__main__":
         os.makedirs(full_data_path)
     
     
+    # origin_corpus = None
+    
     if args.dataset_name == "flickr":
         filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "flickr30k-images/"))
 
@@ -167,7 +170,8 @@ if __name__ == "__main__":
         load_atom_datasets(full_data_path)
     
     elif args.dataset_name == "crepe":
-        queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
+        # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
+        queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
         img_idx_ls, raw_img_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, raw_img_ls, total_count = args.total_count)
         
     elif args.dataset_name == "trec-covid":
@@ -201,26 +205,35 @@ if __name__ == "__main__":
     
     if args.is_img_retrieval:
         img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
-        if args.search_by_cluster:
-            if args.img_concept:
-                cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls = clustering_img_patch_embeddings(patch_emb_ls, bboxes_ls, img_per_patch_ls)
-                # f"output/saved_patches_{method}_{n_patches}_{samples_hash}
-                patch_clustering_info_cached_file = f"output/saved_cluster_info"
-                utils.save((cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls), patch_clustering_info_cached_file, cluster_sub_X_granularity_ids_ls)
-            else:
-                cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls = clustering_img_embeddings(img_emb)
+        
 
     elif args.dataset_name in text_retrieval_datasets:
         img_emb, patch_emb_ls = convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_count_ls=patch_count_ls)
         # img_emb = text_model.encode_corpus(corpus)
-        
-        
+        if args.img_concept:
+            bboxes_ls,img_per_patch_ls, patch_emb_ls = generate_patch_ids_ls(patch_emb_ls)
+    
+    if args.search_by_cluster:
+        if args.img_concept:
+            # cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls
+            cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls = clustering_img_patch_embeddings(patch_emb_ls, bboxes_ls, img_per_patch_ls)
+            
+            patch_clustering_info_cached_file = get_clustering_res_file_name(args, patch_count_ls)
+            
+            if False: #os.path.exists(patch_clustering_info_cached_file):
+                cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls = utils.load(patch_clustering_info_cached_file)
+            else: 
+                utils.save((cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls), patch_clustering_info_cached_file)
+        else:
+            cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls = clustering_img_embeddings(img_emb)
+    
+    
     patch_emb_by_img_ls = patch_emb_ls
     if args.img_concept:
-        if args.is_img_retrieval:
-            patch_emb_by_img_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb)
-        else:
-            patch_emb_by_img_ls = reformat_patch_embeddings_txt(patch_emb_ls, img_emb)
+        # if args.is_img_retrieval:
+        patch_emb_by_img_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb)
+        # else:
+        #     patch_emb_by_img_ls = reformat_patch_embeddings_txt(patch_emb_ls, img_emb)
     
     if args.is_img_retrieval:
         if args.query_concept:
@@ -253,7 +266,11 @@ if __name__ == "__main__":
             qrels = construct_qrels(filename_ls, query_count=args.query_count)
         else:
             qrels = construct_qrels(queries, query_count=args.query_count)
-    retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
+    
+    if args.is_img_retrieval:
+        retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=two)
+    else:
+        retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=one)
     retriever = EvaluateRetrieval(retrieval_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
     
     if args.query_concept:
@@ -261,22 +278,19 @@ if __name__ == "__main__":
             text_emb_ls = [[torch.cat(item) for item in items] for items in text_emb_ls]
     
     # if args.query_concept:
-    t1 = time.time()
     if not args.img_concept:
         if not args.search_by_cluster:
-            retrieve_by_embeddings(retriever, origin_corpus, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
+            retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
         else:
-            retrieve_by_embeddings(retriever, origin_corpus, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls))
+            retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls))
     else:
         
         if not args.search_by_cluster:
-            retrieve_by_embeddings(retriever, origin_corpus, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
+            retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
         else:
-            retrieve_by_embeddings(retriever, origin_corpus, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls))
+            retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls))
     
-    t2 = time.time()
     
-    print(f"Time taken: {t2-t1:.2f}s")
     
     # else:
     #     retrieve_by_embeddings(retriever, text_emb_ls, img_emb, qrels)

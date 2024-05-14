@@ -6,6 +6,7 @@ from tqdm import tqdm
 from torch.autograd import Variable
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.cluster import Birch
+from sklearn.cluster import DBSCAN
 
 def kmeans_cosine(X, k, max_iters=1000):
     """
@@ -67,24 +68,27 @@ def compute_similarities_by_batches(X, k, centroids, device = 'cuda', batch_size
     return similarities
 
 
-def select_patch_embeddings_closest_to_centroids(unique_sub_sample_ids, sub_X, sub_sample_ids, sub_sample_patch_ids, sub_sample_granularity_ids):
+def select_patch_embeddings_closest_to_centroids(mean_sub_X, unique_sub_sample_ids, sub_X, sub_sample_ids, sub_sample_patch_ids, sub_sample_granularity_ids, sub_cat_patch_ids):
     most_similar_sample_ls = []
     most_similar_patch_ids_ls = []
     most_similar_granularity_ids_ls = []
     most_similar_sample_ids_ls = []
+    most_similar_cat_patch_ids_ls = []
     for unique_sub_sample_id in unique_sub_sample_ids:
         curr_sub_X = sub_X[sub_sample_ids == unique_sub_sample_id]
         curr_sub_sample_patch_ids = sub_sample_patch_ids[sub_sample_ids == unique_sub_sample_id]
         curr_sub_sample_granularity_ids = sub_sample_granularity_ids[sub_sample_ids == unique_sub_sample_id]
-        # curr_sub_X_centroid_sims = F.cosine_similarity(curr_sub_X, mean_sub_X.view(1,-1))
-        # most_similar_patch_id_curr_sample = torch.argmax(curr_sub_X_centroid_sims, dim=0)
-        # most_similar_sample_ls.append(curr_sub_X[most_similar_patch_id_curr_sample])
         
-        most_similar_sample_ls.append(torch.mean(curr_sub_X, dim=0))
+        curr_sub_X_centroid_sims = F.cosine_similarity(curr_sub_X, mean_sub_X.view(1,-1))
+        most_similar_patch_id_curr_sample = torch.argmax(curr_sub_X_centroid_sims, dim=0)
+        most_similar_sample_ls.append(curr_sub_X[most_similar_patch_id_curr_sample])
+        
+        # most_similar_sample_ls.append(torch.mean(curr_sub_X, dim=0))
         most_similar_patch_ids_ls.extend(curr_sub_sample_patch_ids.tolist())
         most_similar_granularity_ids_ls.extend(curr_sub_sample_granularity_ids.tolist())
         most_similar_sample_ids_ls.extend([unique_sub_sample_id]*len(curr_sub_X))
-    return torch.stack(most_similar_sample_ls), most_similar_patch_ids_ls, most_similar_granularity_ids_ls, most_similar_sample_ids_ls
+        most_similar_cat_patch_ids_ls.extend(sub_cat_patch_ids[sub_sample_ids == unique_sub_sample_id].tolist())
+    return torch.stack(most_similar_sample_ls), most_similar_patch_ids_ls, most_similar_granularity_ids_ls, most_similar_sample_ids_ls, most_similar_cat_patch_ids_ls
         
 
 def construct_sample_patch_ids_ls(all_bboxes_ls):
@@ -94,17 +98,21 @@ def construct_sample_patch_ids_ls(all_bboxes_ls):
         bboxes_ls = all_bboxes_ls[idx]
         curr_sample_sub_ids_ls = []
         for sub_idx in range(len(bboxes_ls)):
-            if idx == 5 and sub_idx == 658:
-                print("here")
             bboxes = bboxes_ls[sub_idx]
             curr_sample_sub_ids_ls.extend(list(range(len(bboxes))))
         
         
         sample_sub_ids_ls.append(torch.tensor(curr_sample_sub_ids_ls))
-        sample_granularity_ids_ls.append(torch.ones(len(curr_sample_sub_ids_ls))*idx)
+        sample_granularity_ids_ls.append(torch.ones(len(curr_sample_sub_ids_ls)).long()*idx)
         
     return sample_sub_ids_ls, sample_granularity_ids_ls
-        
+
+def get_clustering_res_file_name(args, patch_count_ls):
+    patch_count_ls = sorted(patch_count_ls)
+    patch_count_str = "_".join([str(patch_count) for patch_count in patch_count_ls])
+    patch_clustering_info_cached_file =  f"output/saved_patches_{args.dataset_name}_{patch_count_str}.pkl"
+    return patch_clustering_info_cached_file
+    
 
 def clustering_img_patch_embeddings(X_ls, all_bboxes_ls, img_per_patch_ls, max_k=2000, max_deg = 20):
     """
@@ -120,6 +128,7 @@ def clustering_img_patch_embeddings(X_ls, all_bboxes_ls, img_per_patch_ls, max_k
     inertias = []
     X = torch.cat(X_ls, dim=0)
     img_per_patch_tensor = torch.cat([torch.tensor(img_per_patch).view(-1) for img_per_patch in img_per_patch_ls])
+    sample_cat_patch_id_ls = torch.cat([torch.arange(len(curr_img_per_patch)) for curr_img_per_patch in img_per_patch_ls])
     sample_patch_ids_ls, sample_granularity_ids_ls = construct_sample_patch_ids_ls(all_bboxes_ls)
     sample_patch_ids_tensor = torch.cat(sample_patch_ids_ls)
     sample_granularity_ids_tensor = torch.cat(sample_granularity_ids_ls)
@@ -128,7 +137,8 @@ def clustering_img_patch_embeddings(X_ls, all_bboxes_ls, img_per_patch_ls, max_k
     
     # clustering = AgglomerativeClustering(n_clusters=None, metric="cosine", linkage="complete", distance_threshold=0.1).fit(X.cpu().numpy())
     
-    clustering = Birch(threshold=0.5, n_clusters=None).fit(X.cpu().numpy())
+    # clustering = Birch(threshold=0.3, n_clusters=None).fit(X.cpu().numpy())
+    clustering = DBSCAN(eps=0.1, min_samples=2, metric="cosine").fit(X.cpu().numpy())
 
     cosine_sim_min_ls = []
     cosine_sim_mat_ls = []
@@ -143,9 +153,11 @@ def clustering_img_patch_embeddings(X_ls, all_bboxes_ls, img_per_patch_ls, max_k
     cluster_unique_sample_ids_ls = []
     cluster_sub_X_tensor_ls = []
     cluster_sub_X_patch_ids_ls=[]
+    cluster_sub_X_cat_patch_ids_ls = []
     cluster_sub_X_granularity_ids_ls = []
     for label in tqdm(np.unique(clustering.labels_)):
         sub_X = X[clustering.labels_ == label]      
+        sub_cat_patch_ids = sample_cat_patch_id_ls[clustering.labels_ == label]
         sub_sample_ids = img_per_patch_tensor[clustering.labels_ == label]
         sub_sample_patch_ids = sample_patch_ids_tensor[clustering.labels_ == label]
         sub_sample_granularity_ids = sample_granularity_ids_tensor[clustering.labels_ == label]
@@ -174,7 +186,7 @@ def clustering_img_patch_embeddings(X_ls, all_bboxes_ls, img_per_patch_ls, max_k
         
         unique_sub_sample_ids = sub_sample_ids.unique()
         
-        most_similar_sub_X_tensor, most_similar_patch_ids_ls, most_similar_granularity_ids_ls, most_similar_sample_ids_ls = select_patch_embeddings_closest_to_centroids(unique_sub_sample_ids, sub_X, sub_sample_ids, sub_sample_patch_ids, sub_sample_granularity_ids)
+        most_similar_sub_X_tensor, most_similar_patch_ids_ls, most_similar_granularity_ids_ls, most_similar_sample_ids_ls, most_similar_cat_patch_ids_ls = select_patch_embeddings_closest_to_centroids(mean_sub_X, unique_sub_sample_ids, sub_X, sub_sample_ids, sub_sample_patch_ids, sub_sample_granularity_ids, sub_cat_patch_ids)
         
         
         cluster_sample_count_ls.append(len(sub_sample_ids.unique()))
@@ -183,10 +195,11 @@ def clustering_img_patch_embeddings(X_ls, all_bboxes_ls, img_per_patch_ls, max_k
         cluster_sub_X_tensor_ls.append(most_similar_sub_X_tensor)
         cluster_sub_X_patch_ids_ls.append(most_similar_patch_ids_ls)
         cluster_sub_X_granularity_ids_ls.append(most_similar_granularity_ids_ls)
+        cluster_sub_X_cat_patch_ids_ls.append(most_similar_cat_patch_ids_ls)
         
     cluster_centroid_tensor = torch.cat(cluster_centroid_ls, dim=0)
     
-    return cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls
+    return cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls
 
 
 def clustering_img_embeddings(X_embeddings):

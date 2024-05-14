@@ -73,6 +73,19 @@ class ConceptLearner_text:
         
         return patch_activations
 
+def generate_patch_ids_ls(patch_embs_ls):
+    patch_ids_ls = []
+    nested_patch_ids_ls = []
+    transformed_patch_embs_ls = []
+    for patch_embs in patch_embs_ls:
+        curr_patch_ids_ls = []
+        for idx in range(len(patch_embs)):
+            curr_patch_ids_ls.append(torch.ones(patch_embs[idx].shape[0]).long()*idx)
+        patch_ids_ls.append(torch.cat(curr_patch_ids_ls, dim=0))
+        nested_patch_ids_ls.append(curr_patch_ids_ls)
+        transformed_patch_embs_ls.append(torch.cat(patch_embs, dim=0))
+    return nested_patch_ids_ls, patch_ids_ls, transformed_patch_embs_ls
+
 def convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_count_ls = [32]):
     cl = ConceptLearner_text(corpus, text_model, args.dataset_name, device=device)
     

@@ -10,6 +10,7 @@ import torch
 
 import re
 from vector_dataset import Partitioned_vector_dataset, collate_fn
+import time
 # openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def obtain_key_words(query):
@@ -98,7 +99,7 @@ def retrieve_with_decomposition(retriever, corpus, queries, qrels, out_dir, data
     # return evaluate_for_query_batches(retriever, qrels, results), decomposed_queries
 
 
-def retrieve_by_embeddings(retriever, corpus, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, batch_size=16,in_disk=False, **kwargs):
+def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, batch_size=16,in_disk=False, **kwargs):
     print("results with decomposition::")
     # if parallel:
     #     all_sub_corpus_embedding_dataset= Partitioned_vector_dataset(all_sub_corpus_embedding_ls)
@@ -106,7 +107,11 @@ def retrieve_by_embeddings(retriever, corpus, all_sub_corpus_embedding_ls, query
     
     #     results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_loader, query_count=query_count, parallel=parallel)
     # else:
-    results,_ = retriever.retrieve(corpus, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk, **kwargs)
+    t1 = time.time()
+    results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk, **kwargs)
+    t2 = time.time()
+    
+    print(f"Time taken: {t2-t1:.2f}s")
     ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values, ignore_identical_ids=False)
     # print("start evaluating performance for single query with decomposition")
     # return evaluate_for_query_batches(retriever, qrels, results)

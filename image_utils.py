@@ -120,6 +120,50 @@ def load_crepe_datasets(data_path, query_path):
         sub_caption_ls.append(sub_captions)
     return caption_ls, img_ls, sub_caption_ls, img_idx_ls
 
+def load_crepe_datasets_full(data_path, query_path):
+    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
+
+    split_caption_file_name=os.path.join(query_path, "prod_hard_negatives/split.csv")
+    
+    img_folder = os.path.join(data_path, "VG_100K/")
+    img_folder2 = os.path.join(data_path, "VG_100K_2/")
+
+    caption_pd = pd.read_csv(img_caption_file_name)
+    split_file_pd = pd.read_csv(split_caption_file_name)
+    
+    img_ls = []
+    img_idx_ls = []
+    caption_ls = []
+    sub_caption_ls = []
+    split_file_pd['caption'] = split_file_pd['caption'].apply(lambda x: x.strip())
+    for idx in range(len(caption_pd)):
+        image_idx = caption_pd.iloc[idx]['image_id']
+        if image_idx in img_idx_ls:
+            continue
+        
+        full_img_file_name = os.path.join(img_folder, str(image_idx) + ".jpg")
+        if not os.path.exists(full_img_file_name):
+            full_img_file_name = os.path.join(img_folder2, str(image_idx) + ".jpg")
+            
+        
+        img = Image.open(full_img_file_name)
+        img = img.convert('RGB')
+        caption = caption_pd.iloc[idx]['caption'].strip()
+        
+        if caption in split_file_pd['caption'].values and image_idx not in img_idx_ls:
+            sub_caption_str=split_file_pd[split_file_pd['caption'] == caption]["caption_triples"].values[0]
+        
+            # sub_caption_str = caption_pd.iloc[idx]['caption_triples']
+        
+            sub_captions = decompose_single_query(sub_caption_str)
+            img_ls.append(img)
+            img_idx_ls.append(image_idx)
+            caption_ls.append(caption)
+            sub_caption_ls.append(sub_captions)
+    return caption_ls, img_ls, sub_caption_ls, img_idx_ls
+
+
+
 def load_other_crepe_images(data_path, query_path, img_idx_ls, img_ls, total_count=500):
     
     img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
@@ -127,7 +171,8 @@ def load_other_crepe_images(data_path, query_path, img_idx_ls, img_ls, total_cou
     img_folder2 = os.path.join(data_path, "VG_100K_2/")
 
     caption_pd = pd.read_csv(img_caption_file_name)
-    
+    if total_count > 0 and len(img_ls) >= total_count:
+        return img_idx_ls, img_ls          
     for idx in range(len(caption_pd)):
         image_idx = caption_pd.iloc[idx]['image_id']
         if image_idx in img_idx_ls:
@@ -860,7 +905,7 @@ def convert_samples_to_concepts_img(args, model, images, processor, device, patc
 
 def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb):
     img_per_patch_tensor = torch.tensor(img_per_patch_ls[0])
-    max_img_id = torch.max(img_per_patch_tensor).item()
+    max_img_id = int(torch.max(img_per_patch_tensor).item())
     patch_emb_curr_img_ls = []
     for idx in tqdm(range(max_img_id + 1)):
         sub_patch_emb_curr_img_ls = []
