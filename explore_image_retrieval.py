@@ -170,8 +170,8 @@ if __name__ == "__main__":
         load_atom_datasets(full_data_path)
     
     elif args.dataset_name == "crepe":
-        # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
-        queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
+        queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
+        # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
         img_idx_ls, raw_img_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, raw_img_ls, total_count = args.total_count)
         
     elif args.dataset_name == "trec-covid":
@@ -213,10 +213,15 @@ if __name__ == "__main__":
         if args.img_concept:
             bboxes_ls,img_per_patch_ls, patch_emb_ls = generate_patch_ids_ls(patch_emb_ls)
     
+    patch_emb_by_img_ls = patch_emb_ls
+    if args.img_concept:
+        # if args.is_img_retrieval:
+        patch_emb_by_img_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb)
+    
     if args.search_by_cluster:
         if args.img_concept:
             # cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls
-            cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls = clustering_img_patch_embeddings(patch_emb_ls, bboxes_ls, img_per_patch_ls)
+            cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls = clustering_img_patch_embeddings(patch_emb_by_img_ls, patch_emb_ls, bboxes_ls, img_per_patch_ls)
             
             patch_clustering_info_cached_file = get_clustering_res_file_name(args, patch_count_ls)
             
@@ -228,10 +233,7 @@ if __name__ == "__main__":
             cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls = clustering_img_embeddings(img_emb)
     
     
-    patch_emb_by_img_ls = patch_emb_ls
-    if args.img_concept:
-        # if args.is_img_retrieval:
-        patch_emb_by_img_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb)
+    
         # else:
         #     patch_emb_by_img_ls = reformat_patch_embeddings_txt(patch_emb_ls, img_emb)
     
