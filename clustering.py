@@ -192,7 +192,7 @@ def clustering_img_patch_embeddings(X_by_img_ls, X_ls, all_bboxes_ls, img_per_pa
     # clustering = Birch(threshold=0.3, n_clusters=None).fit(X.cpu().numpy())
     # clustering = DBSCAN(eps=0.1, min_samples=2, metric="cosine").fit(X.cpu().numpy())
     # clustering_labels = clustering.labels_
-    centroid_ls, clustering_labels = online_clustering(X, closeness_threshold=0.2)
+    centroid_ls, clustering_labels = online_clustering(X, closeness_threshold=0.1)
     print(f"Number of clusters: {len(centroid_ls)}")
     # verify_clustering(X, clustering_labels)
 

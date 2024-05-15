@@ -105,6 +105,9 @@ def parse_args():
     parser.add_argument('--total_count', type=int, default=500, help='config file')
     parser.add_argument("--parallel", action="store_true", help="config file")
     parser.add_argument("--search_by_cluster", action="store_true", help="config file")
+    parser.add_argument('--algebra_method', type=str, default=one, help='config file')
+    
+    
     args = parser.parse_args()
     return args
 
@@ -173,6 +176,7 @@ if __name__ == "__main__":
         queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
         # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
         img_idx_ls, raw_img_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, raw_img_ls, total_count = args.total_count)
+        args.algebra_method=two
         
     elif args.dataset_name == "trec-covid":
         url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(args.dataset_name)
@@ -191,6 +195,7 @@ if __name__ == "__main__":
         qrels = {key: qrels[key] for key in sub_queries_ls}
         origin_corpus = None #copy.copy(corpus)
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
+        args.algebra_method=one
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "crepe/"))
         # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "crepe/crepe_captions.txt"))
     
@@ -269,10 +274,10 @@ if __name__ == "__main__":
         else:
             qrels = construct_qrels(queries, query_count=args.query_count)
     
-    if args.is_img_retrieval:
-        retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=two)
-    else:
-        retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=one)
+    # if args.is_img_retrieval:
+    retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=args.algebra_method)
+    # else:
+    #     retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=one)
     retriever = EvaluateRetrieval(retrieval_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
     
     if args.query_concept:
