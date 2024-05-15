@@ -8,6 +8,38 @@ from sklearn.cluster import AgglomerativeClustering
 from sklearn.cluster import Birch
 from sklearn.cluster import DBSCAN
 
+def online_clustering(X, closeness_threshold=0.1):
+    centroid_ls = []
+    labels = torch.zeros(X.shape[0])
+    for idx in tqdm(range(X.shape[0]), desc="Online clustering"):
+        if len(centroid_ls) == 0:
+            centroid_ls.append(X[idx])
+            labels[idx] = 0
+        else:
+            all_centroids = torch.stack(centroid_ls)
+            similarities = F.cosine_similarity(all_centroids, X[idx].view(1,-1))
+            max_sim_idx = torch.argmax(similarities)
+            if similarities[max_sim_idx] > 1 - closeness_threshold:
+                labels[idx] = max_sim_idx
+                centroid_ls[max_sim_idx] = X[labels == max_sim_idx].mean(0)
+            else:
+                centroid_ls.append(X[idx])
+                labels[idx] = len(centroid_ls)-1
+    return centroid_ls, labels
+
+def verify_clustering(X, labels):
+    for label in tqdm(np.unique(labels), desc="Verifying clusters"):
+        sub_X = X[labels == label]
+        
+        sub_X_norm = torch.norm(sub_X, dim=-1)
+        
+        cos_sim = torch.mm(sub_X, sub_X.t())/torch.mm(sub_X_norm.unsqueeze(1), sub_X_norm.unsqueeze(0))
+                
+        max_cos_sim = torch.min(cos_sim)
+        
+        print(f"Max cosine similarity for cluster {label}: {max_cos_sim.item()}")
+
+
 def kmeans_cosine(X, k, max_iters=1000):
     """
     Perform k-means clustering on the given data using cosine similarity as the distance metric.
@@ -70,25 +102,30 @@ def compute_similarities_by_batches(X, k, centroids, device = 'cuda', batch_size
 
 def select_patch_embeddings_closest_to_centroids(mean_sub_X, unique_sub_sample_ids, sub_X, sub_sample_ids, sub_sample_patch_ids, sub_sample_granularity_ids, sub_cat_patch_ids):
     most_similar_sample_ls = []
+    most_similar_sample_mappings = dict()
     most_similar_patch_ids_ls = []
     most_similar_granularity_ids_ls = []
     most_similar_sample_ids_ls = []
     most_similar_cat_patch_ids_ls = []
     for unique_sub_sample_id in unique_sub_sample_ids:
+        unique_sub_sample_id = unique_sub_sample_id.item()
         curr_sub_X = sub_X[sub_sample_ids == unique_sub_sample_id]
         curr_sub_sample_patch_ids = sub_sample_patch_ids[sub_sample_ids == unique_sub_sample_id]
         curr_sub_sample_granularity_ids = sub_sample_granularity_ids[sub_sample_ids == unique_sub_sample_id]
         
-        curr_sub_X_centroid_sims = F.cosine_similarity(curr_sub_X, mean_sub_X.view(1,-1))
-        most_similar_patch_id_curr_sample = torch.argmax(curr_sub_X_centroid_sims, dim=0)
-        most_similar_sample_ls.append(curr_sub_X[most_similar_patch_id_curr_sample])
+        # curr_sub_X_centroid_sims = F.cosine_similarity(curr_sub_X, mean_sub_X.view(1,-1))
+        # most_similar_patch_id_curr_sample = torch.argmax(curr_sub_X_centroid_sims, dim=0)
+        # most_similar_sample_ls.append(curr_sub_X[most_similar_patch_id_curr_sample])
         
         # most_similar_sample_ls.append(torch.mean(curr_sub_X, dim=0))
+        most_similar_sample_ls.append(curr_sub_X)
+        most_similar_sample_mappings[unique_sub_sample_id] = curr_sub_X
         most_similar_patch_ids_ls.extend(curr_sub_sample_patch_ids.tolist())
         most_similar_granularity_ids_ls.extend(curr_sub_sample_granularity_ids.tolist())
         most_similar_sample_ids_ls.extend([unique_sub_sample_id]*len(curr_sub_X))
         most_similar_cat_patch_ids_ls.extend(sub_cat_patch_ids[sub_sample_ids == unique_sub_sample_id].tolist())
-    return torch.stack(most_similar_sample_ls), most_similar_patch_ids_ls, most_similar_granularity_ids_ls, most_similar_sample_ids_ls, most_similar_cat_patch_ids_ls
+    # return torch.stack(most_similar_sample_ls), most_similar_patch_ids_ls, most_similar_granularity_ids_ls, most_similar_sample_ids_ls, most_similar_cat_patch_ids_ls
+    return most_similar_sample_mappings, most_similar_patch_ids_ls, most_similar_granularity_ids_ls, most_similar_sample_ids_ls, most_similar_cat_patch_ids_ls
         
 
 def construct_sample_patch_ids_ls(all_bboxes_ls):
@@ -138,7 +175,11 @@ def clustering_img_patch_embeddings(X_ls, all_bboxes_ls, img_per_patch_ls, max_k
     # clustering = AgglomerativeClustering(n_clusters=None, metric="cosine", linkage="complete", distance_threshold=0.1).fit(X.cpu().numpy())
     
     # clustering = Birch(threshold=0.3, n_clusters=None).fit(X.cpu().numpy())
-    clustering = DBSCAN(eps=0.1, min_samples=2, metric="cosine").fit(X.cpu().numpy())
+    # clustering = DBSCAN(eps=0.1, min_samples=2, metric="cosine").fit(X.cpu().numpy())
+    # clustering_labels = clustering.labels_
+    centroid_ls, clustering_labels = online_clustering(X, closeness_threshold=0.3)
+    print(f"Number of clusters: {len(centroid_ls)}")
+    # verify_clustering(X, clustering_labels)
 
     cosine_sim_min_ls = []
     cosine_sim_mat_ls = []
@@ -155,12 +196,12 @@ def clustering_img_patch_embeddings(X_ls, all_bboxes_ls, img_per_patch_ls, max_k
     cluster_sub_X_patch_ids_ls=[]
     cluster_sub_X_cat_patch_ids_ls = []
     cluster_sub_X_granularity_ids_ls = []
-    for label in tqdm(np.unique(clustering.labels_)):
-        sub_X = X[clustering.labels_ == label]      
-        sub_cat_patch_ids = sample_cat_patch_id_ls[clustering.labels_ == label]
-        sub_sample_ids = img_per_patch_tensor[clustering.labels_ == label]
-        sub_sample_patch_ids = sample_patch_ids_tensor[clustering.labels_ == label]
-        sub_sample_granularity_ids = sample_granularity_ids_tensor[clustering.labels_ == label]
+    for label in tqdm(np.unique(clustering_labels)):
+        sub_X = X[clustering_labels == label]      
+        sub_cat_patch_ids = sample_cat_patch_id_ls[clustering_labels == label]
+        sub_sample_ids = img_per_patch_tensor[clustering_labels == label]
+        sub_sample_patch_ids = sample_patch_ids_tensor[clustering_labels == label]
+        sub_sample_granularity_ids = sample_granularity_ids_tensor[clustering_labels == label]
         
         mean_sub_X = sub_X.mean(0).unsqueeze(0)
         cosine_sim_mat = torch.mm(sub_X, sub_X.t())

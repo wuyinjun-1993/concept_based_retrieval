@@ -335,20 +335,68 @@ class DenseRetrievalExactSearch:
                                 break
                     else:
                         sorted_scores, sorted_indices = torch.sort(curr_scores_mat, dim=-1, descending=True)
-                        local_sim_array = torch.ones(len(all_sub_corpus_embedding_ls), device=device)
-                        local_visited_times_tensor = torch.zeros([len(all_sub_corpus_embedding_ls), sorted_scores.shape[0]], device=device)
+                        # local_sim_array = torch.ones(len(all_sub_corpus_embedding_ls), device=device)
+                        # local_visited_times_tensor = torch.zeros([len(all_sub_corpus_embedding_ls), sorted_scores.shape[0]], device=device)
+                        # for cluster_id in range(sorted_indices.shape[1]):
+                        #     curr_scores = sorted_scores[:,cluster_id]
+                        #     for sub_q_idx in range(len(curr_scores)):
+                        #         curr_cluster_idx = sorted_indices[sub_q_idx,cluster_id]
+                        #         curr_cluster_sample_ids = cluster_unique_sample_ids_ls[curr_cluster_idx].to(device)
+                        #         # if 0 in curr_cluster_sample_ids and query_itr == 0 and sub_query_itr == 0:
+                        #         #     print()
+                        #         selected_rid = (local_visited_times_tensor[curr_cluster_sample_ids,sub_q_idx] == 0)
+                        #         curr_cluster_sample_ids = curr_cluster_sample_ids[selected_rid]
+                        #         curr_sub_X  = cluster_sub_X_ls[curr_cluster_idx].to(device)[selected_rid]
+                        #         curr_sim_score=self.score_functions[score_function](curr_query_embedding[sub_q_idx].to(device), curr_sub_X)
+                                
+                                
+                        #         local_sim_array[curr_cluster_sample_ids] *= curr_sim_score.view(-1) #curr_scores[sub_q_idx]
+                        #         local_visited_times_tensor[curr_cluster_sample_ids, sub_q_idx] = 1
+                        #     if torch.sum(torch.sum(local_visited_times_tensor, dim=-1) >= len(curr_scores)) >= topk_embs:
+                        #         break
+                        
+                        sample_to_cluster_idx_ls = [dict()]*curr_query_embedding.shape[0]
                         for cluster_id in range(sorted_indices.shape[1]):
-                            curr_scores = sorted_scores[:,cluster_id]
-                            for sub_q_idx in range(len(curr_scores)):
-                                curr_cluster_sample_ids = cluster_unique_sample_ids_ls[sorted_indices[sub_q_idx,cluster_id]].to(device)
-                                # if 0 in curr_cluster_sample_ids and query_itr == 0 and sub_query_itr == 0:
-                                #     print()
-                                curr_cluster_sample_ids = curr_cluster_sample_ids[local_visited_times_tensor[curr_cluster_sample_ids,sub_q_idx] == 0]
-                                local_sim_array[curr_cluster_sample_ids] *= curr_scores[sub_q_idx]
-                                local_visited_times_tensor[curr_cluster_sample_ids, sub_q_idx] = 1
-                            if torch.sum(torch.sum(local_visited_times_tensor, dim=-1) >= len(curr_scores)) >= topk_embs:
+                            common_sample_ids = set()
+                            for sub_q_idx in range(curr_query_embedding.shape[0]):
+                                curr_cluster_idx = sorted_indices[sub_q_idx,cluster_id]
+                                # curr_cluster_sample_ids = cluster_sample_ids_ls[curr_cluster_idx]
+                                curr_sample_idx_sub_X_mappings  = cluster_sub_X_ls[curr_cluster_idx]
+                                for sample_id in curr_sample_idx_sub_X_mappings:
+                                    if sample_id not in sample_to_cluster_idx_ls[sub_q_idx]:
+                                        sample_to_cluster_idx_ls[sub_q_idx][sample_id] = []
+                                    # sample_to_sub_X_mappings_ls[sub_q_idx][sample_id].append(curr_sample_idx_sub_X_mappings[sample_id])
+                                    sample_to_cluster_idx_ls[sub_q_idx][sample_id].append(curr_cluster_idx)
+                                    
+                                if sub_q_idx == 0:
+                                    common_sample_ids = set(sample_to_cluster_idx_ls[sub_q_idx].keys())
+                                else:
+                                    common_sample_ids = common_sample_ids.intersection(set(sample_to_cluster_idx_ls[sub_q_idx].keys()))
+                            if len(common_sample_ids) >= topk_embs:
                                 break
-                        all_cos_scores_tensor[:, sub_query_itr, query_itr] = local_sim_array
+                            
+                            merged_sample_to_cluster_idx_mappings = dict()
+                            for sample_id in common_sample_ids:
+                                for sub_q_idx in range(len(sample_to_cluster_idx_ls)):
+                                    if sub_q_idx == 0:
+                                        merged_sample_to_cluster_idx_mappings[sample_id] = set(sample_to_cluster_idx_ls[sub_q_idx][sample_id])
+                                    else:
+                                        merged_sample_to_cluster_idx_mappings[sample_id] = merged_sample_to_cluster_idx_mappings[sample_id].union(set(sample_to_cluster_idx_ls[sub_q_idx][sample_id]))
+                            
+                            
+                            for sample_id in common_sample_ids:
+                                curr_sample_sub_x = []
+                                for cluster_idx in merged_sample_to_cluster_idx_mappings[sample_id]:
+                                    curr_sample_sub_x.append(cluster_sub_X_ls[cluster_idx][sample_id])
+                                cos_scores = torch.prod(torch.max(self.score_functions[score_function](torch.cat(curr_sample_sub_x).to(device), curr_query_embedding.to(device)), dim=0)[0])
+                                all_cos_scores_tensor[sample_id, sub_query_itr, query_itr] = cos_scores
+                            
+                            # for sample_id in common_sample_ids:
+                            #     # for sub_q_idx in range(sample_to_sub_X_mappings_ls):
+                            #         cos_scores = torch.prod(torch.max(self.score_functions(torch.cat(sample_to_cluster_idx_ls[0][sample_id]), curr_query_embedding.to(device)), dim=0))
+                            #         all_cos_scores_tensor[sample_id, sub_q_idx, query_itr] = cos_scores
+                                
+                        # all_cos_scores_tensor[torch.sum(local_visited_times_tensor, dim=-1) >= len(curr_scores), sub_query_itr, query_itr] = local_sim_array
 
         all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=0, keepdim=True)
         all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
