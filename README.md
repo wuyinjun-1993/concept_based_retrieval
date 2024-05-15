@@ -48,7 +48,7 @@ Note that the retrieval performance is evaluated based on the ground-truth mappi
 
 ## Run the code on another text retrieval dataset
 
-Here we assume that the 
+We can start from the datasets listed in this  [git repo](https://github.com/beir-cellar/beir/tree/main)
 
 
 
