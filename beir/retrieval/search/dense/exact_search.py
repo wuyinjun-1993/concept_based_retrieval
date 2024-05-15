@@ -196,6 +196,7 @@ class DenseRetrievalExactSearch:
         
         return self.results, all_sub_corpus_embedding_ls
 
+    # @profile
     def search_by_clusters(self, 
                corpus: Dict[str, Dict[str, str]], 
                queries: Dict, 
@@ -354,41 +355,50 @@ class DenseRetrievalExactSearch:
                         #         local_visited_times_tensor[curr_cluster_sample_ids, sub_q_idx] = 1
                         #     if torch.sum(torch.sum(local_visited_times_tensor, dim=-1) >= len(curr_scores)) >= topk_embs:
                         #         break
-                        
-                        sample_to_cluster_idx_ls = [dict()]*curr_query_embedding.shape[0]
+                        sample_to_cat_patch_idx_ls = [dict()]*curr_query_embedding.shape[0]
+                        # sample_to_cluster_idx_ls = [dict()]*curr_query_embedding.shape[0]
                         for cluster_id in range(sorted_indices.shape[1]):
                             common_sample_ids = set()
                             for sub_q_idx in range(curr_query_embedding.shape[0]):
-                                curr_cluster_idx = sorted_indices[sub_q_idx,cluster_id]
+                                curr_cluster_idx = sorted_indices[sub_q_idx,cluster_id].item()
                                 # curr_cluster_sample_ids = cluster_sample_ids_ls[curr_cluster_idx]
-                                curr_sample_idx_sub_X_mappings  = cluster_sub_X_ls[curr_cluster_idx]
-                                for sample_id in curr_sample_idx_sub_X_mappings:
-                                    if sample_id not in sample_to_cluster_idx_ls[sub_q_idx]:
-                                        sample_to_cluster_idx_ls[sub_q_idx][sample_id] = []
-                                    # sample_to_sub_X_mappings_ls[sub_q_idx][sample_id].append(curr_sample_idx_sub_X_mappings[sample_id])
-                                    sample_to_cluster_idx_ls[sub_q_idx][sample_id].append(curr_cluster_idx)
-                                    
+                                # curr_sample_idx_sub_X_mappings  = cluster_sub_X_ls[curr_cluster_idx]
+                                curr_cat_patch_ids_mappings = cluster_sub_X_cat_patch_ids_ls[curr_cluster_idx]
+                                for sample_id in curr_cat_patch_ids_mappings:
+                                    if sample_id not in sample_to_cat_patch_idx_ls[sub_q_idx]:
+                                        # sample_to_cluster_idx_ls[sub_q_idx][sample_id] = []
+                                        sample_to_cat_patch_idx_ls[sub_q_idx][sample_id] = []# sample_to_sub_X_mappings_ls[sub_q_idx][sample_id].append(curr_sample_idx_sub_X_mappings[sample_id])
+                                    # sample_to_cluster_idx_ls[sub_q_idx][sample_id].append(curr_cluster_idx)
+                                    sample_to_cat_patch_idx_ls[sub_q_idx][sample_id].extend(curr_cat_patch_ids_mappings[sample_id])
                                 if sub_q_idx == 0:
-                                    common_sample_ids = set(sample_to_cluster_idx_ls[sub_q_idx].keys())
+                                    common_sample_ids = set(sample_to_cat_patch_idx_ls[sub_q_idx].keys())
                                 else:
-                                    common_sample_ids = common_sample_ids.intersection(set(sample_to_cluster_idx_ls[sub_q_idx].keys()))
+                                    common_sample_ids = common_sample_ids.intersection(set(sample_to_cat_patch_idx_ls[sub_q_idx].keys()))
                             if len(common_sample_ids) >= topk_embs:
                                 break
                             
-                            merged_sample_to_cluster_idx_mappings = dict()
+                            # merged_sample_to_cluster_idx_mappings = dict()
+                            merged_sample_to_cat_patch_idx_mappings = dict()
                             for sample_id in common_sample_ids:
-                                for sub_q_idx in range(len(sample_to_cluster_idx_ls)):
+                                for sub_q_idx in range(len(sample_to_cat_patch_idx_ls)):
                                     if sub_q_idx == 0:
-                                        merged_sample_to_cluster_idx_mappings[sample_id] = set(sample_to_cluster_idx_ls[sub_q_idx][sample_id])
+                                        # merged_sample_to_cluster_idx_mappings[sample_id] = set(sample_to_cluster_idx_ls[sub_q_idx][sample_id])
+                                        merged_sample_to_cat_patch_idx_mappings[sample_id] = set(sample_to_cat_patch_idx_ls[sub_q_idx][sample_id])
                                     else:
-                                        merged_sample_to_cluster_idx_mappings[sample_id] = merged_sample_to_cluster_idx_mappings[sample_id].union(set(sample_to_cluster_idx_ls[sub_q_idx][sample_id]))
-                            
+                                        # merged_sample_to_cluster_idx_mappings[sample_id] = merged_sample_to_cluster_idx_mappings[sample_id].union(set(sample_to_cluster_idx_ls[sub_q_idx][sample_id]))
+                                        merged_sample_to_cat_patch_idx_mappings[sample_id] = merged_sample_to_cat_patch_idx_mappings[sample_id].union(set(sample_to_cat_patch_idx_ls[sub_q_idx][sample_id]))
                             
                             for sample_id in common_sample_ids:
-                                curr_sample_sub_x = []
-                                for cluster_idx in merged_sample_to_cluster_idx_mappings[sample_id]:
-                                    curr_sample_sub_x.append(cluster_sub_X_ls[cluster_idx][sample_id])
-                                cos_scores = torch.prod(torch.max(self.score_functions[score_function](torch.cat(curr_sample_sub_x).to(device), curr_query_embedding.to(device)), dim=0)[0])
+                                # sample_id = int(sample_id)
+                                # curr_sample_sub_x = []
+                                # for cluster_idx in merged_sample_to_cluster_idx_mappings[sample_id]:
+                                #     curr_sample_sub_x.append(cluster_sub_X_ls[cluster_idx][sample_id])
+                                
+                                patch_ids = torch.tensor(list(merged_sample_to_cat_patch_idx_mappings[sample_id]))
+                                curr_sample_sub_X_tensor = all_sub_corpus_embedding_ls[sample_id][patch_ids].to(device)
+                                
+                                # curr_sample_sub_X_tensor2 = torch.cat(curr_sample_sub_x).to(device)
+                                cos_scores = torch.prod(torch.max(self.score_functions[score_function](curr_sample_sub_X_tensor, curr_query_embedding.to(device)), dim=0)[0])
                                 all_cos_scores_tensor[sample_id, sub_query_itr, query_itr] = cos_scores
                             
                             # for sample_id in common_sample_ids:
