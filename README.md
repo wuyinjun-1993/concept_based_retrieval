@@ -11,7 +11,7 @@ The query files are stored in "prod_hard_negatives/". In this demo, we only used
 ## Run the code without decomposing images or queries:
 
 ```
-python explore_image_retrieval.py --dataset_name crepe --data_path /path/to/data/ --query_count -1 --total_count -1 
+python main.py --dataset_name crepe --data_path /path/to/data/ --query_count -1 --total_count -1 
 ```
 
 in this command, "--total_count" represents the number of documents used for retrieval tasks, -1 means that we used all documents while a positive number means that we only used a subset of the entire document set. For the purpose of quick demonstration, "total_count" could be 500 or 1000.
@@ -19,7 +19,7 @@ in this command, "--total_count" represents the number of documents used for ret
 
 ## Run the code by decomposing images and queries:
 ```
-python explore_image_retrieval.py --dataset_name crepe --data_path /path/to/data/ --query_count -1 --total_count -1  --img_concept --query_concept
+python main.py --dataset_name crepe --data_path /path/to/data/ --query_count -1 --total_count -1  --img_concept --query_concept
 ```
 
 in this command, "--img_concept" represents partitioning images or documents while "--query_concept" represents partitioning queries.
@@ -28,7 +28,7 @@ in this command, "--img_concept" represents partitioning images or documents whi
 ## Run the code by decomposing images and queries while using the clustering-based indexes at the same time
 
 ```
-python explore_image_retrieval.py --dataset_name crepe --data_path /path/to/data/ --query_count -1 --total_count -1  --img_concept --query_concept --search_by_cluster
+python main.py --dataset_name crepe --data_path /path/to/data/ --query_count -1 --total_count -1  --img_concept --query_concept --search_by_cluster
 ```
 
 in this command, "--search_by_cluster" means that we construct the clustering-based indexes for speed-ups
@@ -52,5 +52,5 @@ We can start from the datasets listed in this  [git repo](https://github.com/bei
 
 
 
-
-
+# To vary the retrieval mode
+You can change algebra_method to "one" or "two". By defauly, "one" is for text retrieval while "two" is for image retrieval.
