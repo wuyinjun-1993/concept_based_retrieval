@@ -16,7 +16,7 @@ from beir.datasets.data_loader import GenericDataLoader
 import time
 # from beir.retrieval.models.clip_model import clip_model
 from clustering import *
-from explore_image_retrieval import *
+from main import *
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe"]
 

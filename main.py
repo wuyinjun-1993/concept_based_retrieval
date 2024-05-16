@@ -106,6 +106,8 @@ def parse_args():
     parser.add_argument("--parallel", action="store_true", help="config file")
     parser.add_argument("--search_by_cluster", action="store_true", help="config file")
     parser.add_argument('--algebra_method', type=str, default=one, help='config file')
+    # closeness_threshold
+    parser.add_argument('--closeness_threshold', type=float, default=0.1, help='config file')
     
     
     args = parser.parse_args()
@@ -226,7 +228,7 @@ if __name__ == "__main__":
     if args.search_by_cluster:
         if args.img_concept:
             # cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls
-            cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls = clustering_img_patch_embeddings(patch_emb_by_img_ls, patch_emb_ls, bboxes_ls, img_per_patch_ls)
+            cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls = clustering_img_patch_embeddings(patch_emb_by_img_ls, args.dataset_name + "_" + str(args.total_count), patch_emb_ls, bboxes_ls, img_per_patch_ls, closeness_threshold=args.closeness_threshold)
             
             patch_clustering_info_cached_file = get_clustering_res_file_name(args, patch_count_ls)
             

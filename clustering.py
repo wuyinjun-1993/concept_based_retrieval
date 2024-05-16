@@ -9,6 +9,7 @@ from sklearn.cluster import Birch
 from sklearn.cluster import DBSCAN
 
 def online_clustering(X, closeness_threshold=0.1):
+    print("closeness threshold::", closeness_threshold)
     centroid_ls = []
     labels = torch.zeros(X.shape[0])
     for idx in tqdm(range(X.shape[0]), desc="Online clustering"):
@@ -163,8 +164,9 @@ def get_clustering_res_file_name(args, patch_count_ls):
     patch_clustering_info_cached_file =  f"output/saved_patches_{args.dataset_name}_{patch_count_str}.pkl"
     return patch_clustering_info_cached_file
     
-
-def clustering_img_patch_embeddings(X_by_img_ls, X_ls, all_bboxes_ls, img_per_patch_ls, max_k=2000, max_deg = 20):
+# 0.12 for trec covid 10000
+# 0.2
+def clustering_img_patch_embeddings(X_by_img_ls, dataset_name, X_ls, all_bboxes_ls, img_per_patch_ls, closeness_threshold = 0.1):
     """
     Determine the optimal number of clusters using the elbow method.
 
@@ -192,7 +194,10 @@ def clustering_img_patch_embeddings(X_by_img_ls, X_ls, all_bboxes_ls, img_per_pa
     # clustering = Birch(threshold=0.3, n_clusters=None).fit(X.cpu().numpy())
     # clustering = DBSCAN(eps=0.1, min_samples=2, metric="cosine").fit(X.cpu().numpy())
     # clustering_labels = clustering.labels_
-    centroid_ls, clustering_labels = online_clustering(X, closeness_threshold=0.1)
+    # threshold
+    centroid_ls, clustering_labels = online_clustering(X, closeness_threshold=closeness_threshold)
+    torch.save(centroid_ls, f"output/{dataset_name}_centroid_ls_{closeness_threshold}.pt")
+    torch.save(clustering_labels, f"output/{dataset_name}_clustering_labels_{closeness_threshold}.pt")
     print(f"Number of clusters: {len(centroid_ls)}")
     # verify_clustering(X, clustering_labels)
 
