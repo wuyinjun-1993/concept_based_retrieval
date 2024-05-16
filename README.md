@@ -48,7 +48,7 @@ Note that the retrieval performance is evaluated based on the ground-truth mappi
 
 ## Run the code on another text retrieval dataset
 
-We can start from the datasets listed in this  [git repo](https://github.com/beir-cellar/beir/tree/main)
+We can start from the datasets listed in this  [git repo](https://github.com/beir-cellar/beir/tree/main). Note that the splited queries should be put in the folder /path/to/data/${dataset_name}. For example, for trec-covid dataset, we need to move the file "queries_with_subs.jsonl" to /path/to/data/${dataset_name} before the experiments.
 
 
 
