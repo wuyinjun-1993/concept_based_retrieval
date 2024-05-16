@@ -11,7 +11,7 @@ from sklearn.cluster import DBSCAN
 def online_clustering(X, closeness_threshold=0.1):
     print("closeness threshold::", closeness_threshold)
     centroid_ls = []
-    labels = torch.zeros(X.shape[0])
+    labels = torch.ones(X.shape[0])*(-1)
     for idx in tqdm(range(X.shape[0]), desc="Online clustering"):
         if len(centroid_ls) == 0:
             centroid_ls.append(X[idx].cuda())
@@ -22,8 +22,10 @@ def online_clustering(X, closeness_threshold=0.1):
             similarities = F.cosine_similarity(all_centroids, X[idx].cuda().view(1,-1))
             max_sim_idx = torch.argmax(similarities).item()
             if similarities[max_sim_idx] > 1 - closeness_threshold:
+                
+                centroid_sample_count = torch.sum(labels == max_sim_idx).item()
+                centroid_ls[max_sim_idx] = (centroid_ls[max_sim_idx]*centroid_sample_count +  X[idx].cuda())/(centroid_sample_count+1)
                 labels[idx] = max_sim_idx
-                centroid_ls[max_sim_idx] = X[labels == max_sim_idx].cuda().mean(0)
             else:
                 centroid_ls.append(X[idx].cuda())
                 labels[idx] = len(centroid_ls)-1
