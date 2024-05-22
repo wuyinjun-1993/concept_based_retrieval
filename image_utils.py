@@ -13,7 +13,7 @@ import utils
 import torchvision.transforms as transforms
 from datasets import load_dataset
 import pandas as pd
-from retrieval_utils import decompose_single_query
+from retrieval_utils import decompose_single_query, decompose_single_query_ls
 from scipy import ndimage
 import cv2
 from storage import *
@@ -87,7 +87,9 @@ def load_atom_datasets(data_path):
     # selected_dataset = filter_atom_images_by_langs(dataset)
     
 def load_crepe_datasets(data_path, query_path):
-    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
+    
+    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all5.csv")
 
     img_folder = os.path.join(data_path, "VG_100K/")
     img_folder2 = os.path.join(data_path, "VG_100K_2/")
@@ -111,9 +113,11 @@ def load_crepe_datasets(data_path, query_path):
         img = Image.open(full_img_file_name)
         img = img.convert('RGB')
         caption = caption_pd.iloc[idx]['caption']
-        sub_caption_str = caption_pd.iloc[idx]['caption_triples']
+        # sub_caption_str = caption_pd.iloc[idx]['caption_triples']
+        sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
         
-        sub_captions = decompose_single_query(sub_caption_str)
+        # sub_captions = decompose_single_query(sub_caption_str)
+        sub_captions = decompose_single_query_ls(sub_caption_str)
         img_ls.append(img)
         img_idx_ls.append(image_idx)
         caption_ls.append(caption)
@@ -155,7 +159,7 @@ def load_crepe_datasets_full(data_path, query_path):
         
             # sub_caption_str = caption_pd.iloc[idx]['caption_triples']
         
-            sub_captions = decompose_single_query(sub_caption_str)
+            sub_captions = decompose_single_query_ls(sub_caption_str)
             img_ls.append(img)
             img_idx_ls.append(image_idx)
             caption_ls.append(caption)

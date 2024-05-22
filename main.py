@@ -18,8 +18,9 @@ import time
 from clustering import *
 from text_utils import *
 import copy
+import os, shutil
 
-image_retrieval_datasets = ["flickr", "AToMiC", "crepe"]
+image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full"]
 text_retrieval_datasets = ["trec-covid"]
 
 
@@ -158,6 +159,8 @@ if __name__ == "__main__":
     
     
     full_data_path = os.path.join(args.data_path, args.dataset_name)
+    if args.dataset_name.startswith("crepe"):
+        full_data_path = os.path.join(args.data_path, "crepe")
     
     query_path = os.path.dirname(os.path.realpath(__file__))
     
@@ -177,6 +180,12 @@ if __name__ == "__main__":
     elif args.dataset_name == "crepe":
         queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
         # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
+        img_idx_ls, raw_img_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, raw_img_ls, total_count = args.total_count)
+        args.algebra_method=two
+        
+    elif args.dataset_name == "crepe_full":
+        # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
+        queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
         img_idx_ls, raw_img_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, raw_img_ls, total_count = args.total_count)
         args.algebra_method=two
         
@@ -246,13 +255,13 @@ if __name__ == "__main__":
     
     if args.is_img_retrieval:
         if args.query_concept:
-            if not args.dataset_name == "crepe":
+            if not args.dataset_name.startswith("crepe"):
                 queries = [filename_cap_mappings[file] for file in filename_ls]
                 sub_queries_ls = decompose_queries_by_keyword(args.dataset_name, queries)
-                full_sub_queries_ls = [[sub_queries_ls[idx], [queries[idx]]] for idx in range(len(sub_queries_ls))]
+                full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
             else:
                 # sub_queries_ls = decompose_queries_by_clauses(queries)
-                full_sub_queries_ls = [[sub_queries_ls[idx], [queries[idx]]] for idx in range(len(sub_queries_ls))]
+                full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
                 # full_sub_queries_ls = [[sub_queries_ls[idx]] for idx in range(len(sub_queries_ls))]
             text_emb_ls = embed_queries_ls(full_sub_queries_ls, text_processor, model, device)
             # text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)

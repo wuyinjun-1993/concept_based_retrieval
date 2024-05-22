@@ -140,6 +140,16 @@ def decompose_single_query(curr_query, reg_pattern = "[,.]"):
     decomposed_q = [dq.strip() for dq in decomposed_q if len(dq.strip()) > 0]
     return decomposed_q
 
+def decompose_single_query_ls(curr_query_ls):
+    curr_query_ls = decompose_single_query(curr_query_ls, reg_pattern="#")
+    all_decomposed_q_ls = []
+    for query in curr_query_ls:
+        sub_query_decomposed_ls = decompose_single_query(query)
+        all_decomposed_q_ls.append(sub_query_decomposed_ls)
+    # decomposed_q = re.split(reg_pattern, curr_query)
+    # decomposed_q = [dq.strip() for dq in decomposed_q if len(dq.strip()) > 0]
+    return all_decomposed_q_ls
+
 def decompose_queries_by_clauses(queries):
     decomposed_queries = list()
     # reg_pattern = ",|."
