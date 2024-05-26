@@ -113,6 +113,7 @@ def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddi
     
     print(f"Time taken: {t2-t1:.2f}s")
     ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values, ignore_identical_ids=False)
+    return results
     # print("start evaluating performance for single query with decomposition")
     # return evaluate_for_query_batches(retriever, qrels, results)
 
