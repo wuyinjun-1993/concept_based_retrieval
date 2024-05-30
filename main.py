@@ -6,7 +6,7 @@ from sklearn.metrics import top_k_accuracy_score
 from beir.retrieval.evaluation import EvaluateRetrieval
 from retrieval_utils import *
 from beir.retrieval.search.dense import DenseRetrievalExactSearch as DRES
-from beir.retrieval.search.dense.exact_search import one, two
+from beir.retrieval.search.dense.exact_search import one, two, three
 from beir.retrieval import models
 from beir import LoggingHandler
 from datasets import load_dataset
@@ -152,7 +152,7 @@ if __name__ == "__main__":
     if not args.is_img_retrieval:
         # text_model = models.clip_model(text_processor, model, device)
         text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b")
-        text_retrieval_model = DRES(text_model, batch_size=16, algebra_method=one)
+        text_retrieval_model = DRES(text_model, batch_size=16)
         # retriever = EvaluateRetrieval(text_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
 
         # text_processor = AutoProcessor.from_pretrained("sentence-transformers/msmarco-distilbert-base-tas-b")
@@ -218,18 +218,18 @@ if __name__ == "__main__":
         
         origin_corpus = None #copy.copy(corpus)
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
-        args.algebra_method=one
+        args.algebra_method=three
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "crepe/"))
         # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "crepe/crepe_captions.txt"))
     
     if args.is_img_retrieval:
-        if not args.query_concept:    
-            patch_count_ls = [4, 8, 16, 32, 64, 128]
-        else:
-            patch_count_ls = [4, 8, 16, 32, 64, 128]
+        # if not args.query_concept:    
+        #     patch_count_ls = [4, 8, 16, 32, 64, 128]
+        # else:
+            patch_count_ls = [4, 8, 16, 32] #, 64, 128]
     else:
-        patch_count_ls = [24, 32]
-        # patch_count_ls = [1, 16, 8, 4, 2]
+        # patch_count_ls = [8, 24, 32]
+        patch_count_ls = [1, 16, 8, 4, 2, 24, 32]
         # patch_count_ls = [32]
     
     if args.is_img_retrieval:

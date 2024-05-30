@@ -15,6 +15,7 @@ import os
 
 one="one"
 two="two"
+three="three"
 
 class DenseRetrievalExactSearch:
     
@@ -144,7 +145,7 @@ class DenseRetrievalExactSearch:
                         curr_scores = 1
                         if len(sub_corpus_embeddings.shape) == 2 and sub_corpus_embeddings.shape[0] > 1:
                             # curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
-                            if self.algebra_method == one:
+                            if self.algebra_method == one or self.algebra_method == three:
                                 curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
                             else:
                                 curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
@@ -158,6 +159,10 @@ class DenseRetrievalExactSearch:
                         # full_curr_scores += curr_scores
                         if self.algebra_method == one:
                             curr_scores = torch.max(torch.prod(curr_scores_ls, dim=0))
+                            full_curr_scores_ls.append(curr_scores.item())
+                        elif self.algebra_method == three:
+                            curr_scores = torch.max(torch.sum(curr_scores_ls, dim=0))
+                            # curr_scores = torch.max(torch.max(curr_scores_ls, dim=0))
                             full_curr_scores_ls.append(curr_scores.item())
                         else:
                             curr_scores = torch.prod(curr_scores_ls)
@@ -302,8 +307,12 @@ class DenseRetrievalExactSearch:
                     # for sub_q_idx in range(curr_scores_mat.shape[0]):
                     #     curr_scores *= curr_scores_mat[sub_q_idx]
                     # 
-                    if self.algebra_method == one:
-                        curr_scores = torch.prod(curr_scores_mat, dim=0)
+                    if self.algebra_method == one or self.algebra_method == three:
+                        if self.algebra_method == one:
+                            curr_scores = torch.prod(curr_scores_mat, dim=0)
+                        else:
+                            curr_scores = torch.sum(curr_scores_mat, dim=0)
+                        
                         
                         topk_cluster_ids = torch.argsort(curr_scores, descending=True)
                         
