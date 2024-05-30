@@ -89,7 +89,7 @@ def load_atom_datasets(data_path):
 def load_flickr_dataset(data_path, query_path):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
-    img_caption_file_name= os.path.join(query_path, "sub_queries.csv")
+    img_caption_file_name= os.path.join(query_path, "sub_queries2.csv")
 
     img_folder = os.path.join(data_path, "flickr30k-images/")
     # img_folder2 = os.path.join(data_path, "VG_100K_2/")
@@ -118,6 +118,7 @@ def load_flickr_dataset(data_path, query_path):
         
         # sub_captions = decompose_single_query(sub_caption_str)
         sub_captions = decompose_single_query_ls(sub_caption_str)
+        print(sub_captions)
         img_ls.append(img)
         img_idx_ls.append(image_idx)
         caption_ls.append(caption)
@@ -274,8 +275,19 @@ def load_other_flickr_images(data_path, query_path, img_idx_ls, img_ls, total_co
         img_idx_ls.append(image_idx)
         if total_count > 0 and len(img_ls) >= total_count:
             break
-    
+            
     return img_idx_ls, img_ls    
+
+def obtain_sample_hash(img_idx_ls, img_ls):
+    sorted_idx = sorted(range(len(img_idx_ls)), key=lambda k: img_idx_ls[k])
+    
+    sorted_img_idx_ls = [img_idx_ls[i] for i in sorted_idx]
+    
+    sorted_img_ls = [img_ls[i] for i in sorted_idx]
+
+    hash_val = utils.hashfn(sorted_img_ls)
+    
+    return hash_val
 
 def read_images_from_folder(folder_path, total_count=100):
     transform = transforms.Compose([
@@ -713,12 +725,11 @@ class ConceptLearner:
         utils.save(patches_for_imgs, f"output/saved_patches_{patch_method}_{samples_hash}.pkl")
         return patches_for_imgs
 
-    def get_patches(self, n_patches, images=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True):
+    def get_patches(self, n_patches, samples_hash, images=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True):
         """Get patches from images using different segmentation methods."""
         if images is None:
             images = self.samples
 
-        samples_hash = utils.hashfn(images)
         if os.path.exists(f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"):
             print("Loading cached patches")
             print(samples_hash)
@@ -956,7 +967,7 @@ def segment_all_images(data_folder, img_name_ls, split="train", sam_model_type="
     return image_mappings, segment_mappings
 
 
-def convert_samples_to_concepts_img(args, model, images, processor, device, patch_count_ls = [32]):
+def convert_samples_to_concepts_img(args, samples_hash, model, images, processor, device, patch_count_ls = [32]):
     # samples: list[PIL.Image], labels, input_to_latent, input_processor, dataset_name, device: str = 'cpu'
     # cl = ConceptLearner(images, labels, vit_forward, processor, img_processor, args.dataset_name, device)
     cl = ConceptLearner(images, model, vit_forward, processor, args.dataset_name, device)
@@ -970,9 +981,9 @@ def convert_samples_to_concepts_img(args, model, images, processor, device, patc
     for idx in range(len(patch_count_ls)):
         patch_count = patch_count_ls[idx]
         if idx == 0:
-            curr_img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, images=images, method="slic", compute_img_emb=True)
+            curr_img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, samples_hash, images=images, method="slic", compute_img_emb=True)
         else:
-            curr_img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, images=images, method="slic", compute_img_emb=False)
+            curr_img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, samples_hash, images=images, method="slic", compute_img_emb=False)
         if curr_img_emb is not None:
             img_emb = curr_img_emb
         patch_emb_ls.append(patch_emb)

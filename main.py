@@ -174,10 +174,11 @@ if __name__ == "__main__":
         queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_flickr_dataset(full_data_path, full_data_path)
         
         img_idx_ls, raw_img_ls = load_other_flickr_images(full_data_path, query_path, img_idx_ls, raw_img_ls, total_count = args.total_count)
+        
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "flickr30k-images/"), total_count = args.total_count)
 
         # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "results_20130124.token"))    
-        args.algebra_method=two
+        # args.algebra_method=one
     elif args.dataset_name == "AToMiC":
         load_atom_datasets(full_data_path)
     
@@ -216,7 +217,7 @@ if __name__ == "__main__":
     
     if args.is_img_retrieval:
         if not args.query_concept:    
-            patch_count_ls = [4, 8]
+            patch_count_ls = [4, 8, 16, 32, 64, 128]
         else:
             patch_count_ls = [4, 8, 16, 32, 64, 128]
     else:
@@ -224,7 +225,8 @@ if __name__ == "__main__":
         patch_count_ls = [1, 16, 8, 4, 2]
     
     if args.is_img_retrieval:
-        img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
+        samples_hash = obtain_sample_hash(img_idx_ls, raw_img_ls)
+        img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, samples_hash, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
         
 
     elif args.dataset_name in text_retrieval_datasets:
