@@ -196,16 +196,26 @@ def read_queries_with_sub_queries_file(filename):
     queries = dict()
     
     sub_queries_ls= dict()
-    idx = 1
+    # idx = 1
+    rid = 1
+    idx_to_rid = dict()
     for json_str in json_list:
         result = json.loads(json_str)
         if "sub_text" in result:
-            queries[str(idx)] = result["text"]
-            sub_queries_ls[str(idx)] = result["sub_text"]
-            
-        idx += 1
+            idx = result["_id"]
+            queries[str(rid)] = result["text"]
+            sub_queries_ls[str(rid)] = result["sub_text"]
+            idx_to_rid[str(rid)] = str(idx)
+        # idx += 1
+            rid += 1
         
-    return queries, sub_queries_ls
+    return queries, sub_queries_ls, idx_to_rid
+
+def check_empty_mappings(curr_gt):
+    value_ls = set(list(curr_gt.values()))
+    if len(value_ls) == 1 and list(value_ls)[0] == 0:
+        return True
+    return False
 
 def encode_sub_queries_ls(sub_queries_ls, text_model):
     all_sub_queries_emb_ls = []

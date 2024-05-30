@@ -201,7 +201,7 @@ if __name__ == "__main__":
         data_path = util.download_and_unzip(url, full_data_path)
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
         
-        queries, sub_queries_ls = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_subs.jsonl"))
+        queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_subs.jsonl"))
         
         subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
         if False: #os.path.exists(subset_file_name):
@@ -210,7 +210,12 @@ if __name__ == "__main__":
             corpus, qrels = subset_corpus(corpus, qrels, args.total_count)
             utils.save((corpus, qrels), subset_file_name)
         
-        qrels = {key: qrels[key] for key in sub_queries_ls}
+        qrels = {key: qrels[idx_to_rid[key]] for key in sub_queries_ls if not check_empty_mappings(qrels[idx_to_rid[key]])}
+        
+        if len(qrels) == 0:
+            print("no valid queries, exit!")
+            exit(1)
+        
         origin_corpus = None #copy.copy(corpus)
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
         args.algebra_method=one
@@ -223,8 +228,9 @@ if __name__ == "__main__":
         else:
             patch_count_ls = [4, 8, 16, 32, 64, 128]
     else:
-        # patch_count_ls = [8, 16, 24, 32]
-        patch_count_ls = [1, 16, 8, 4, 2]
+        patch_count_ls = [24, 32]
+        # patch_count_ls = [1, 16, 8, 4, 2]
+        # patch_count_ls = [32]
     
     if args.is_img_retrieval:
         samples_hash = obtain_sample_hash(img_idx_ls, raw_img_ls)
