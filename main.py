@@ -171,9 +171,13 @@ if __name__ == "__main__":
     # origin_corpus = None
     
     if args.dataset_name == "flickr":
-        filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "flickr30k-images/"))
+        queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_flickr_dataset(full_data_path, full_data_path)
+        
+        img_idx_ls, raw_img_ls = load_other_flickr_images(full_data_path, query_path, img_idx_ls, raw_img_ls, total_count = args.total_count)
+        # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "flickr30k-images/"), total_count = args.total_count)
 
-        filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "results_20130124.token"))    
+        # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "results_20130124.token"))    
+        args.algebra_method=two
     elif args.dataset_name == "AToMiC":
         load_atom_datasets(full_data_path)
     
@@ -255,20 +259,20 @@ if __name__ == "__main__":
     
     if args.is_img_retrieval:
         if args.query_concept:
-            if not args.dataset_name.startswith("crepe"):
-                queries = [filename_cap_mappings[file] for file in filename_ls]
-                sub_queries_ls = decompose_queries_by_keyword(args.dataset_name, queries)
-                full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
-            else:
+            # if not args.dataset_name.startswith("crepe"):
+            #     queries = [filename_cap_mappings[file] for file in filename_ls]
+            #     sub_queries_ls = decompose_queries_by_keyword(args.dataset_name, queries)
+            #     full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
+            # else:
                 # sub_queries_ls = decompose_queries_by_clauses(queries)
-                full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
+            full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
                 # full_sub_queries_ls = [[sub_queries_ls[idx]] for idx in range(len(sub_queries_ls))]
             text_emb_ls = embed_queries_ls(full_sub_queries_ls, text_processor, model, device)
             # text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)
         else:
-            if args.dataset_name == "flickr":
-                text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)
-            else:
+            # if args.dataset_name == "flickr":
+            #     text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)
+            # else:
                 text_emb_ls = embed_queries_with_input_queries(queries, text_processor, model, device)
     else:
         if not args.query_concept:
@@ -280,9 +284,9 @@ if __name__ == "__main__":
     
     # retrieve_by_full_query(img_emb, text_emb_ls)
     if args.is_img_retrieval:
-        if args.dataset_name == "flickr":
-            qrels = construct_qrels(filename_ls, query_count=args.query_count)
-        else:
+        # if args.dataset_name == "flickr":
+        #     qrels = construct_qrels(filename_ls, query_count=args.query_count)
+        # else:
             qrels = construct_qrels(queries, query_count=args.query_count)
     
     # if args.is_img_retrieval:

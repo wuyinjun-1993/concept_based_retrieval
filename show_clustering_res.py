@@ -104,7 +104,7 @@ if __name__ == "__main__":
     if args.dataset_name == "flickr":
         filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "flickr30k-images/"))
 
-        filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "results_20130124.token"))    
+        filename_cap_mappings = read_flickr_image_captions(os.path.join(full_data_path, "results_20130124.token"))    
     elif args.dataset_name == "AToMiC":
         load_atom_datasets(full_data_path)
     

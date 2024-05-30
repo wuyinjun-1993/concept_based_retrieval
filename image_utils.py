@@ -84,8 +84,47 @@ def load_atom_datasets(data_path):
     
     text_ls = load_dataset("TREC-AToMiC/AToMiC-Texts-v0.2", split='train')
     
-    # selected_dataset = filter_atom_images_by_langs(dataset)
+    # selected_dataset = filter_atom_images_by_langs(dataset) 
+
+def load_flickr_dataset(data_path, query_path):
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
+    img_caption_file_name= os.path.join(query_path, "sub_queries.csv")
+
+    img_folder = os.path.join(data_path, "flickr30k-images/")
+    # img_folder2 = os.path.join(data_path, "VG_100K_2/")
+
+    caption_pd = pd.read_csv(img_caption_file_name)
+    
+    img_ls = []
+    img_idx_ls = []
+    caption_ls = []
+    sub_caption_ls = []
+    for idx in tqdm(range(len(caption_pd))):
+        image_idx = caption_pd.iloc[idx]['image_id']
+        if image_idx in img_idx_ls:
+            continue
+        
+        full_img_file_name = os.path.join(img_folder, str(image_idx))
+        # if not os.path.exists(full_img_file_name):
+        #     full_img_file_name = os.path.join(img_folder2, str(image_idx) + ".jpg")
+            
+        
+        img = Image.open(full_img_file_name)
+        img = img.convert('RGB')
+        caption = caption_pd.iloc[idx]['caption']
+        # sub_caption_str = caption_pd.iloc[idx]['caption_triples']
+        sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
+        
+        # sub_captions = decompose_single_query(sub_caption_str)
+        sub_captions = decompose_single_query_ls(sub_caption_str)
+        img_ls.append(img)
+        img_idx_ls.append(image_idx)
+        caption_ls.append(caption)
+        sub_caption_ls.append(sub_captions)
+    return caption_ls, img_ls, sub_caption_ls, img_idx_ls
+
+
 def load_crepe_datasets(data_path, query_path):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
@@ -201,6 +240,42 @@ def load_other_crepe_images(data_path, query_path, img_idx_ls, img_ls, total_cou
     return img_idx_ls, img_ls    
         
     
+def load_other_flickr_images(data_path, query_path, img_idx_ls, img_ls, total_count=500):
+    
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
+    
+    filename_cap_mappings = read_flickr_image_captions(os.path.join(data_path, "results_20130124.token"))    
+
+    # img_folder = os.path.join(data_path, "VG_100K/")
+    img_folder = os.path.join(data_path, "flickr30k-images/")
+    # img_folder2 = os.path.join(data_path, "VG_100K_2/")
+
+    # caption_pd = pd.read_csv(img_caption_file_name)
+    if total_count > 0 and len(img_ls) >= total_count:
+        return img_idx_ls, img_ls          
+    # for idx in range(len(caption_pd)):
+    for image_idx in tqdm(filename_cap_mappings):
+        # image_idx = caption_pd.iloc[idx]['image_id']
+        if image_idx in img_idx_ls:
+            continue
+        
+        full_img_file_name = os.path.join(img_folder, str(image_idx))
+        # if not os.path.exists(full_img_file_name):
+        #     full_img_file_name = os.path.join(img_folder2, str(image_idx) + ".jpg")
+            
+        
+        img = Image.open(full_img_file_name)
+        img = img.convert('RGB')
+        # caption = caption_pd.iloc[idx]['caption']
+        # sub_caption_str = caption_pd.iloc[idx]['caption_triples']
+        
+        # sub_captions = decompose_single_query(sub_caption_str)
+        img_ls.append(img)
+        img_idx_ls.append(image_idx)
+        if total_count > 0 and len(img_ls) >= total_count:
+            break
+    
+    return img_idx_ls, img_ls    
 
 def read_images_from_folder(folder_path, total_count=100):
     transform = transforms.Compose([
@@ -224,7 +299,7 @@ def read_images_from_folder(folder_path, total_count=100):
                 break
     return filename_ls, raw_img_ls, img_ls
 
-def read_image_captions(caption_file):
+def read_flickr_image_captions(caption_file):
     filename_caption_mappings = dict()
     with open(caption_file, "r") as f:
         for line in f:
