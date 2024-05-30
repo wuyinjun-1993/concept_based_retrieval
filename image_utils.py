@@ -725,7 +725,7 @@ class ConceptLearner:
         utils.save(patches_for_imgs, f"output/saved_patches_{patch_method}_{samples_hash}.pkl")
         return patches_for_imgs
 
-    def get_patches(self, n_patches, samples_hash, images=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True):
+    def get_patches(self, n_patches, samples_hash, img_idx_ls=None, images=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True):
         """Get patches from images using different segmentation methods."""
         if images is None:
             images = self.samples
@@ -733,10 +733,17 @@ class ConceptLearner:
         if os.path.exists(f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"):
             print("Loading cached patches")
             print(samples_hash)
-            image_embs, patch_activations, masks, bboxes, img_for_patch = utils.load(f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl")
+            cached_data = utils.load(f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl")
+            
+            # if len(cached_data) == 6:
+            img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch = cached_data
+            # else:
+            #     image_embs, patch_activations, masks, bboxes, img_for_patch = cached_data
+                # utils.save((img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch), f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl")
+            
             if image_embs is None and compute_img_emb:
                 image_embs = get_image_embeddings(images, self.input_processor, self.input_to_latent, self.model, not_normalize=not_normalize)    
-            return image_embs, patch_activations, masks, bboxes, img_for_patch
+            return img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
         if compute_img_emb:
             image_embs = get_image_embeddings(images, self.input_processor, self.input_to_latent, self.model, not_normalize=not_normalize)
         else:
@@ -789,8 +796,8 @@ class ConceptLearner:
         # cache the result
         if not os.path.exists(f"output/"):
             os.mkdir(f"output/")
-        utils.save((image_embs, patch_activations, masks, bboxes, img_for_patch), f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl")
-        return image_embs, patch_activations, masks, bboxes, img_for_patch
+        utils.save((img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch), f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl")
+        return img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
     
     def get_patches_by_hierarchies(self, images=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True, depth_lim=5, partition_strategy="one", extend_size=0, recompute_img_emb=False):
         """Get patches from images using different segmentation methods."""
@@ -967,7 +974,7 @@ def segment_all_images(data_folder, img_name_ls, split="train", sam_model_type="
     return image_mappings, segment_mappings
 
 
-def convert_samples_to_concepts_img(args, samples_hash, model, images, processor, device, patch_count_ls = [32]):
+def convert_samples_to_concepts_img(args, samples_hash, model, images, img_idx_ls, processor, device, patch_count_ls = [32]):
     # samples: list[PIL.Image], labels, input_to_latent, input_processor, dataset_name, device: str = 'cpu'
     # cl = ConceptLearner(images, labels, vit_forward, processor, img_processor, args.dataset_name, device)
     cl = ConceptLearner(images, model, vit_forward, processor, args.dataset_name, device)
@@ -981,16 +988,17 @@ def convert_samples_to_concepts_img(args, samples_hash, model, images, processor
     for idx in range(len(patch_count_ls)):
         patch_count = patch_count_ls[idx]
         if idx == 0:
-            curr_img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, samples_hash, images=images, method="slic", compute_img_emb=True)
+            curr_img_ls, curr_img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, samples_hash, img_idx_ls=img_idx_ls, images=images, method="slic", compute_img_emb=True)
         else:
-            curr_img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, samples_hash, images=images, method="slic", compute_img_emb=False)
+            curr_img_ls, curr_img_emb, patch_emb, masks, bboxes, img_per_patch = cl.get_patches(patch_count, samples_hash, img_idx_ls=img_idx_ls, images=images, method="slic", compute_img_emb=False)
         if curr_img_emb is not None:
             img_emb = curr_img_emb
+            img_ls = curr_img_ls
         patch_emb_ls.append(patch_emb)
         masks_ls.append(masks)
         img_per_batch_ls.append(img_per_patch)
         bboxes_ls.append(bboxes)
-    return img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_batch_ls
+    return img_ls, img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_batch_ls
 
 
 def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb):

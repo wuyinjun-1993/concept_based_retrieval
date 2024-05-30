@@ -114,13 +114,15 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def construct_qrels(filename_ls, query_count):
+def construct_qrels(filename_ls, cached_img_idx, img_idx_ls, query_count):
     qrels = {}
     if query_count < 0:
         query_count = len(filename_ls)
     
     for idx in range(query_count):
-        qrels[str(idx+1)] = {str(idx+1): 2}
+        curr_img_idx = img_idx_ls[idx]
+        cached_idx = cached_img_idx.index(curr_img_idx)
+        qrels[str(idx+1)] = {str(cached_idx+1): 2}
     
     return qrels
 
@@ -226,7 +228,7 @@ if __name__ == "__main__":
     
     if args.is_img_retrieval:
         samples_hash = obtain_sample_hash(img_idx_ls, raw_img_ls)
-        img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, samples_hash, model, raw_img_ls, processor, device, patch_count_ls=patch_count_ls)
+        cached_img_ls, img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, samples_hash, model, raw_img_ls, img_idx_ls, processor, device, patch_count_ls=patch_count_ls)
         
 
     elif args.dataset_name in text_retrieval_datasets:
@@ -289,7 +291,7 @@ if __name__ == "__main__":
         # if args.dataset_name == "flickr":
         #     qrels = construct_qrels(filename_ls, query_count=args.query_count)
         # else:
-            qrels = construct_qrels(queries, query_count=args.query_count)
+            qrels = construct_qrels(queries, cached_img_ls, img_idx_ls, query_count=args.query_count)
     
     # if args.is_img_retrieval:
     retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=args.algebra_method)
