@@ -188,13 +188,13 @@ if __name__ == "__main__":
         queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
         # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
         img_idx_ls, raw_img_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, raw_img_ls, total_count = args.total_count)
-        args.algebra_method=two
+        # args.algebra_method=two
         
     elif args.dataset_name == "crepe_full":
         # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
         queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
         img_idx_ls, raw_img_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, raw_img_ls, total_count = args.total_count)
-        args.algebra_method=two
+        # args.algebra_method=two
         
     elif args.dataset_name == "trec-covid":
         url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(args.dataset_name)
@@ -226,7 +226,7 @@ if __name__ == "__main__":
         # if not args.query_concept:    
         #     patch_count_ls = [4, 8, 16, 32, 64, 128]
         # else:
-            patch_count_ls = [4, 8, 16, 32] #, 64, 128]
+            patch_count_ls = [4, 8, 16, 32, 64, 128]
     else:
         # patch_count_ls = [8, 24, 32]
         patch_count_ls = [1, 16, 8, 4, 2, 24, 32]

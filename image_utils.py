@@ -17,7 +17,8 @@ from retrieval_utils import decompose_single_query, decompose_single_query_ls
 from scipy import ndimage
 import cv2
 from storage import *
-
+from PIL import ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 @dataclass
 class Patch:
@@ -129,7 +130,7 @@ def load_flickr_dataset(data_path, query_path):
 def load_crepe_datasets(data_path, query_path):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
-    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all5.csv")
+    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6.csv")
 
     img_folder = os.path.join(data_path, "VG_100K/")
     img_folder2 = os.path.join(data_path, "VG_100K_2/")
@@ -164,16 +165,26 @@ def load_crepe_datasets(data_path, query_path):
         sub_caption_ls.append(sub_captions)
     return caption_ls, img_ls, sub_caption_ls, img_idx_ls
 
+def replace_comma_with_vertical_line(caption_pd, file_name):
+    for idx in range(len(caption_pd)):
+        caption_pd.iloc[idx]['caption_triples'] = caption_pd.iloc[idx]['caption_triples'].replace(",","|")
+        
+    caption_pd.to_csv(file_name, index=False)
+
+
 def load_crepe_datasets_full(data_path, query_path):
     img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
 
-    split_caption_file_name=os.path.join(query_path, "prod_hard_negatives/split.csv")
+    split_caption_file_name=os.path.join(query_path, "prod_hard_negatives/split2.csv")
     
     img_folder = os.path.join(data_path, "VG_100K/")
     img_folder2 = os.path.join(data_path, "VG_100K_2/")
 
     caption_pd = pd.read_csv(img_caption_file_name)
+    
     split_file_pd = pd.read_csv(split_caption_file_name)
+    
+    # replace_comma_with_vertical_line(split_file_pd, os.path.join(query_path, "prod_hard_negatives/split2.csv"))
     
     img_ls = []
     img_idx_ls = []
@@ -196,7 +207,7 @@ def load_crepe_datasets_full(data_path, query_path):
         
         if caption in split_file_pd['caption'].values and image_idx not in img_idx_ls:
             sub_caption_str=split_file_pd[split_file_pd['caption'] == caption]["caption_triples"].values[0]
-        
+            # sub_caption_str=sub_caption_str.replace(",","|")
             # sub_caption_str = caption_pd.iloc[idx]['caption_triples']
         
             sub_captions = decompose_single_query_ls(sub_caption_str)
@@ -261,7 +272,8 @@ def load_other_flickr_images(data_path, query_path, img_idx_ls, img_ls, total_co
             continue
         
         full_img_file_name = os.path.join(img_folder, str(image_idx))
-        # if not os.path.exists(full_img_file_name):
+        if not os.path.exists(full_img_file_name):
+            continue
         #     full_img_file_name = os.path.join(img_folder2, str(image_idx) + ".jpg")
             
         

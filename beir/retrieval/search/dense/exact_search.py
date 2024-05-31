@@ -166,6 +166,7 @@ class DenseRetrievalExactSearch:
                             full_curr_scores_ls.append(curr_scores.item())
                         else:
                             curr_scores = torch.prod(curr_scores_ls)
+                            # curr_scores = torch.sum(curr_scores_ls)
                             full_curr_scores_ls.append(curr_scores.item())
                     
                     curr_scores = torch.tensor(full_curr_scores_ls)
