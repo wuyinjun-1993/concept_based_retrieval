@@ -105,6 +105,7 @@ def parse_args():
     parser.add_argument('--img_concept', action="store_true", help='config file')
     parser.add_argument('--total_count', type=int, default=500, help='config file')
     parser.add_argument("--parallel", action="store_true", help="config file")
+    parser.add_argument("--save_mask_bbox", action="store_true", help="config file")
     parser.add_argument("--search_by_cluster", action="store_true", help="config file")
     parser.add_argument('--algebra_method', type=str, default=one, help='config file')
     # closeness_threshold
@@ -113,6 +114,14 @@ def parse_args():
     
     args = parser.parse_args()
     return args
+
+import psutil
+import os
+
+def print_memory_usage():
+    process = psutil.Process(os.getpid())
+    print(f"Memory usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
+
 
 def construct_qrels(filename_ls, cached_img_idx, img_idx_ls, query_count):
     qrels = {}
@@ -173,9 +182,9 @@ if __name__ == "__main__":
     # origin_corpus = None
     
     if args.dataset_name == "flickr":
-        queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_flickr_dataset(full_data_path, full_data_path)
+        queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_flickr_dataset(full_data_path, full_data_path)
         
-        img_idx_ls, raw_img_ls = load_other_flickr_images(full_data_path, query_path, img_idx_ls, raw_img_ls, total_count = args.total_count)
+        img_idx_ls, img_file_name_ls = load_other_flickr_images(full_data_path, query_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
         
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "flickr30k-images/"), total_count = args.total_count)
 
@@ -185,15 +194,15 @@ if __name__ == "__main__":
         load_atom_datasets(full_data_path)
     
     elif args.dataset_name == "crepe":
-        queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
+        queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
         # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
-        img_idx_ls, raw_img_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, raw_img_ls, total_count = args.total_count)
+        img_idx_ls, img_file_name_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
         # args.algebra_method=two
         
     elif args.dataset_name == "crepe_full":
         # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
-        queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
-        img_idx_ls, raw_img_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, raw_img_ls, total_count = args.total_count)
+        queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
+        img_idx_ls, img_file_name_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
         # args.algebra_method=two
         
     elif args.dataset_name == "trec-covid":
@@ -233,8 +242,13 @@ if __name__ == "__main__":
         # patch_count_ls = [32]
     
     if args.is_img_retrieval:
-        samples_hash = obtain_sample_hash(img_idx_ls, raw_img_ls)
-        cached_img_ls, img_emb, patch_emb_ls, masks_ls, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, samples_hash, model, raw_img_ls, img_idx_ls, processor, device, patch_count_ls=patch_count_ls)
+        samples_hash = obtain_sample_hash(img_idx_ls, img_file_name_ls)
+        # cached_img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
+        # if args.save_mask_bbox:
+        cached_img_ls, img_emb, patch_emb_ls, _, _, img_per_patch_ls = convert_samples_to_concepts_img(args, samples_hash, model, img_file_name_ls, img_idx_ls, processor, device, patch_count_ls=patch_count_ls,save_mask_bbox=args.save_mask_bbox)
+        # else:
+        #     cached_img_ls, img_emb, patch_emb_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, samples_hash, model, img_file_name_ls, img_idx_ls, processor, device, patch_count_ls=patch_count_ls,save_mask_bbox=args.save_mask_bbox)
+            
         
 
     elif args.dataset_name in text_retrieval_datasets:
