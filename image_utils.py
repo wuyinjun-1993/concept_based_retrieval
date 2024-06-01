@@ -653,9 +653,9 @@ def get_patches_from_bboxes(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls,
             if save_mask_bbox:
                 masks_ls[patch_count_idx].append(img_mask)
                 bboxes_ls[patch_count_idx].append(bboxes)
-            else:
-                del img_mask, bboxes
-                gc.collect()
+            # else:
+            #     del img_mask, bboxes
+            #     gc.collect()
     for patch_count_idx in range(len(patch_count_ls)):
         if patch_count_for_compute_ls[patch_count_idx] == False:
             continue
