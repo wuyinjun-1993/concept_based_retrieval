@@ -210,7 +210,7 @@ if __name__ == "__main__":
         data_path = util.download_and_unzip(url, full_data_path)
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
         
-        queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_subs.jsonl"))
+        queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_subs2.jsonl"))
         
         subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
         if False: #os.path.exists(subset_file_name):
@@ -238,7 +238,8 @@ if __name__ == "__main__":
             patch_count_ls = [4, 8, 16, 32, 64, 128]
     else:
         # patch_count_ls = [8, 24, 32]
-        patch_count_ls = [1, 16, 8, 4, 2, 24, 32]
+        # patch_count_ls = [1, 16, 8, 4, 2, 24, 32]
+        patch_count_ls = [1]
         # patch_count_ls = [32]
     
     if args.is_img_retrieval:
@@ -255,7 +256,7 @@ if __name__ == "__main__":
         img_emb, patch_emb_ls = convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_count_ls=patch_count_ls)
         # img_emb = text_model.encode_corpus(corpus)
         if args.img_concept:
-            bboxes_ls,img_per_patch_ls, patch_emb_ls = generate_patch_ids_ls(patch_emb_ls)
+            _,img_per_patch_ls, patch_emb_ls = generate_patch_ids_ls(patch_emb_ls)
     
     patch_emb_by_img_ls = patch_emb_ls
     if args.img_concept:
@@ -265,7 +266,7 @@ if __name__ == "__main__":
     if args.search_by_cluster:
         if args.img_concept:
             # cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls
-            cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls = clustering_img_patch_embeddings(patch_emb_by_img_ls, args.dataset_name + "_" + str(args.total_count), patch_emb_ls, bboxes_ls, img_per_patch_ls, closeness_threshold=args.closeness_threshold)
+            cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls = clustering_img_patch_embeddings(patch_emb_by_img_ls, args.dataset_name + "_" + str(args.total_count), patch_emb_ls, img_per_patch_ls, closeness_threshold=args.closeness_threshold)
             
             patch_clustering_info_cached_file = get_clustering_res_file_name(args, patch_count_ls)
             
@@ -289,7 +290,8 @@ if __name__ == "__main__":
             #     full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
             # else:
                 # sub_queries_ls = decompose_queries_by_clauses(queries)
-            full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
+            full_sub_queries_ls = sub_queries_ls
+            # full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
                 # full_sub_queries_ls = [[sub_queries_ls[idx]] for idx in range(len(sub_queries_ls))]
             text_emb_ls = embed_queries_ls(full_sub_queries_ls, text_processor, model, device)
             # text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)

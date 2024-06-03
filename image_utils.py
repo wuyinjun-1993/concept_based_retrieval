@@ -659,7 +659,7 @@ def get_patches_from_bboxes(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls,
     for patch_count_idx in range(len(patch_count_ls)):
         if patch_count_for_compute_ls[patch_count_idx] == False:
             continue
-        patch_emb_ls[patch_count_idx] = torch.cat(patch_emb_ls[patch_count_idx])
+        # patch_emb_ls[patch_count_idx] = torch.cat(patch_emb_ls[patch_count_idx])
         # patches = input_processor(patches)
         # if processor is not None:
         #     patches = processor(patches)
@@ -733,7 +733,7 @@ def get_patches_from_bboxes0(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls
     for patch_count_idx in range(len(patch_count_ls)):
         if patch_count_for_compute_ls[patch_count_idx] == False:
             continue
-        patch_emb_ls[patch_count_idx] = torch.cat(patch_emb_ls[patch_count_idx])
+        # patch_emb_ls[patch_count_idx] = torch.cat(patch_emb_ls[patch_count_idx])
     
     if save_mask_bbox:
         return patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls
@@ -818,6 +818,16 @@ class ConceptLearner:
             
         utils.save(patches_for_imgs, f"output/saved_patches_{patch_method}_{samples_hash}.pkl")
         return patches_for_imgs
+    
+    def store_patch_encodings_separately(self, img_file_name_ls, patch_activations, img_for_patch):
+        img_for_patch_tensor = torch.tensor(img_for_patch)
+        patch_activation_ls = []
+        for idx in tqdm(range(len(img_file_name_ls))):
+            # img_idx = img_for_patch[idx]
+            patch_activation = patch_activations[img_for_patch_tensor == idx]
+            patch_activation_ls.append(patch_activation)
+        return patch_activation_ls
+        
 
     def get_patches(self, patch_count_ls, samples_hash, img_idx_ls=None, img_file_name_ls=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True, save_mask_bbox=False):
         """Get patches from images using different segmentation methods."""
@@ -853,6 +863,10 @@ class ConceptLearner:
                 # if image_embs is None and compute_img_emb:
                 #     image_embs = get_image_embeddings(img_file_name_ls, self.input_processor, self.input_to_latent, self.model, not_normalize=not_normalize)  
                 
+                try:
+                    patch_activations = self.store_patch_encodings_separately(img_file_name_ls, patch_activations, img_for_patch)
+                except:
+                    print("no need to separate")
                 patch_emb_ls[idx] = patch_activations
                 img_per_batch_ls[idx] = img_for_patch
                 if save_mask_bbox:
@@ -860,6 +874,13 @@ class ConceptLearner:
                     bboxes_ls[idx] = bboxes
                     
                 patch_count_for_compute_ls[idx] = False
+                
+                if save_mask_bbox:
+                    utils.save((patch_activations, masks, bboxes, img_for_patch), cached_file_name)
+                    # return cached_img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
+                else:
+                    utils.save((patch_activations, img_for_patch), cached_file_name)
+                
                 # if save_mask_bbox:  
                 #     return img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
                 # else:
@@ -1170,11 +1191,16 @@ def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb):
         sub_patch_emb_curr_img_ls = []
         for sub_idx in range(len(patch_emb_ls)):
             patch_emb = patch_emb_ls[sub_idx]
-            img_per_batch = img_per_patch_ls[sub_idx]
-            img_per_patch_tensor = torch.tensor(img_per_batch)
-            patch_emb_curr_img = patch_emb[img_per_patch_tensor == idx]
+            # img_per_batch = img_per_patch_ls[sub_idx]
+            # img_per_patch_tensor = torch.tensor(img_per_batch)
+            # curr_selected_ids = torch.nonzero(img_per_patch_tensor == idx).view(-1)
+            patch_emb_curr_img = patch_emb[idx] #[curr_selected_ids]
+            
+            # curr_selected_ids = torch.nonzero(img_per_patch_tensor == idx).view(-1)
+            # patch_emb_curr_img = patch_emb[curr_selected_ids]
             sub_patch_emb_curr_img_ls.append(patch_emb_curr_img)
-        sub_patch_emb_curr_img = torch.cat(sub_patch_emb_curr_img_ls, dim=0)
-        patch_emb_curr_img = torch.cat([img_emb[idx].unsqueeze(0), sub_patch_emb_curr_img], dim=0)
+        sub_patch_emb_curr_img_ls.append(img_emb[idx].unsqueeze(0))
+        patch_emb_curr_img = torch.cat(sub_patch_emb_curr_img_ls, dim=0)
+        # patch_emb_curr_img = torch.cat([img_emb[idx].unsqueeze(0), sub_patch_emb_curr_img], dim=0)
         patch_emb_curr_img_ls.append(patch_emb_curr_img)
     return patch_emb_curr_img_ls

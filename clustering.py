@@ -168,7 +168,7 @@ def get_clustering_res_file_name(args, patch_count_ls):
     
 # 0.12 for trec covid 10000
 # 0.2
-def clustering_img_patch_embeddings(X_by_img_ls, dataset_name, X_ls, all_bboxes_ls, img_per_patch_ls, closeness_threshold = 0.1):
+def clustering_img_patch_embeddings(X_by_img_ls, dataset_name, X_ls, img_per_patch_ls, closeness_threshold = 0.1):
     """
     Determine the optimal number of clusters using the elbow method.
 
