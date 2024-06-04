@@ -938,11 +938,11 @@ class ConceptLearner:
                     
                 patch_count_for_compute_ls[idx] = False
                 
-                if save_mask_bbox:
-                    utils.save((patch_activations, masks, bboxes, img_for_patch), cached_file_name)
-                    # return cached_img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
-                else:
-                    utils.save((patch_activations, bboxes, img_for_patch), cached_file_name)
+                # if save_mask_bbox:
+                #     utils.save((patch_activations, masks, bboxes, img_for_patch), cached_file_name)
+                #     # return cached_img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
+                # else:
+                #     utils.save((patch_activations, bboxes, img_for_patch), cached_file_name)
                 
                 # if save_mask_bbox:  
                 #     return img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
@@ -968,10 +968,11 @@ class ConceptLearner:
         # masks = get_slic_segments(img_file_name_ls, n_segments=n_patches)
         # bboxes = masks_to_bboxes(masks)
         # get_patches_from_bboxes(model, images, all_bboxes, input_processor, sub_bboxes=None, image_size=(224, 224), processor=None, resize=None, device="cpu"):
-        if not use_mask:
-            get_patches_from_bboxes(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, self.input_processor, device=self.device, resize=self.image_size, save_mask_bbox=save_mask_bbox)
-        else:
-            get_patches_from_bboxes0(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, bboxes, self.input_processor, device=self.device, resize=self.image_size, save_mask_bbox=save_mask_bbox)
+        if True in patch_count_for_compute_ls:
+            if not use_mask:
+                get_patches_from_bboxes(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, self.input_processor, device=self.device, resize=self.image_size, save_mask_bbox=save_mask_bbox)
+            else:
+                get_patches_from_bboxes0(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, bboxes, self.input_processor, device=self.device, resize=self.image_size, save_mask_bbox=save_mask_bbox)
         
         # if save_mask_bbox:
         #     patch_activations, img_for_patch, masks, bboxes = res
