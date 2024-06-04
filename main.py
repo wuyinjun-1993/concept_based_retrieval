@@ -20,7 +20,7 @@ from text_utils import *
 import copy
 import os, shutil
 
-image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full"]
+image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco"]
 text_retrieval_datasets = ["trec-covid"]
 
 
@@ -190,6 +190,10 @@ if __name__ == "__main__":
 
         # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "results_20130124.token"))    
         # args.algebra_method=one
+    elif args.dataset_name == "mscoco":
+        queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_sharegpt4v_datasets(full_data_path, full_data_path)
+        img_idx_ls, img_file_name_ls = load_other_sharegpt4v_mscoco_images(full_data_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
+    
     elif args.dataset_name == "AToMiC":
         load_atom_datasets(full_data_path)
     

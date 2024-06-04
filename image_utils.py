@@ -20,6 +20,7 @@ from storage import *
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 import gc
+import pickle
 
 @dataclass
 class Patch:
@@ -91,7 +92,9 @@ def load_atom_datasets(data_path):
 def load_flickr_dataset(data_path, query_path):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
-    img_caption_file_name= os.path.join(query_path, "sub_queries.csv")
+    # img_caption_file_name= os.path.join(query_path, "sub_queries.csv")
+    img_caption_file_name= os.path.join(query_path, "sub_queries2.csv")
+
 
     img_folder = os.path.join(data_path, "flickr30k-images/")
     # img_folder2 = os.path.join(data_path, "VG_100K_2/")
@@ -129,6 +132,60 @@ def load_flickr_dataset(data_path, query_path):
         caption_ls.append(caption)
         sub_caption_ls.append(sub_captions)
     return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls
+
+def load_sharegpt4v_datasets(data_path, query_path):
+    # img_caption_file_name = query_path
+    # with open(img_caption_file_name, 'rb') as f:
+    # caption_pd = pickle.load(f)
+    caption_pd = pd.read_csv(os.path.join(query_path, "sharegpt_query_20.csv"))
+    img_file_name_ls = []
+    img_idx_ls = []
+    caption_ls = []
+    sub_caption_ls = []
+    for idx in range(len(caption_pd)):
+        image_idx = caption_pd.iloc[idx]['id']
+        if image_idx in img_idx_ls:
+            continue
+
+        img_path = caption_pd.iloc[idx]['image']
+        #image_dir is the directory in which the root folder for the main image files are located, in this case in train2017 folder
+        # image_dir = '/content/unzipped_images/train2017/train2017/'
+        img_final_path = os.path.join(data_path, "images/train2017/", img_path)
+        caption = caption_pd.iloc[idx]['caption_sharegpt4v']
+        sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
+        sub_captions = decompose_single_query_ls(sub_caption_str)
+        img_file_name_ls.append(img_final_path)
+        img_idx_ls.append(image_idx)
+        caption_ls.append(caption)
+        sub_caption_ls.append(sub_captions)
+    return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls
+
+
+def load_other_sharegpt4v_mscoco_images(dataset_path, img_idx_ls, img_file_name_ls, total_count):
+    #query_path = '/content/drive/MyDrive/'
+    #img_caption_file_name = os.path.join(query_path, "sharegpt4v_mscoco_image_paths.pkl")
+    # img_caption_file_name = dataset_path
+    img_caption_file_name = os.path.join(dataset_path, "mscoco_120k.pkl")
+    with open(img_caption_file_name, 'rb') as f:
+      caption_pd = pickle.load(f)
+    if total_count > 0 and len(img_file_name_ls) >= total_count:
+        return img_idx_ls, img_file_name_ls       
+    for idx in tqdm(range(len(caption_pd))):
+        image_idx = caption_pd.iloc[idx]['id']
+        if image_idx in img_idx_ls:
+            continue
+        
+        img_path = caption_pd.iloc[idx]['image']
+        #image_dir is the directory in which the root folder for the main image files are located, in this case in train2017 folder
+        # image_dir = '/content/unzipped_images/train2017/train2017/'
+        image_dir = os.path.join(dataset_path, "images/train2017/")
+        img_final_path = os.path.join(image_dir, img_path)
+        img_file_name_ls.append(img_final_path)
+        img_idx_ls.append(image_idx)
+        if total_count > 0 and len(img_file_name_ls) >= total_count:
+            break
+    
+    return img_idx_ls, img_file_name_ls
 
 
 def load_crepe_datasets(data_path, query_path):
@@ -650,9 +707,9 @@ def get_patches_from_bboxes(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls,
             
             patch_embs = embed_patches(forward_func, patches, model, input_processor, processor, device=device, resize=resize)
             patch_emb_ls[patch_count_idx].append(patch_embs)
+            bboxes_ls[patch_count_idx].append(bboxes)
             if save_mask_bbox:
                 masks_ls[patch_count_idx].append(img_mask)
-                bboxes_ls[patch_count_idx].append(bboxes)
             # else:
             #     del img_mask, bboxes
             #     gc.collect()
@@ -719,9 +776,10 @@ def get_patches_from_bboxes0(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls
             if resize:
                 x = torch.nn.functional.interpolate(x, size=resize, mode='bilinear', align_corners=False)
             patch_emb_ls[patch_count_idx].append(forward_func(x, model).cpu())
+            bboxes_ls[patch_count_idx].append(bboxes)
             if save_mask_bbox:
                 masks_ls[patch_count_idx].append(img_mask)
-                bboxes_ls[patch_count_idx].append(bboxes)
+                
             else:
                 del img_mask, bboxes
                 gc.collect()
@@ -851,10 +909,14 @@ class ConceptLearner:
                 cached_data = utils.load(cached_file_name)
                 
                 # if len(cached_data) == 6:
+                bboxes = None
                 if save_mask_bbox:
                     patch_activations, masks, bboxes, img_for_patch = cached_data
                 else:
-                    patch_activations, img_for_patch = cached_data
+                    if len(cached_data) == 3:
+                        patch_activations, bboxes, img_for_patch = cached_data
+                    else:
+                        patch_activations, img_for_patch = cached_data
                     
                 # else:
                 #     image_embs, patch_activations, masks, bboxes, img_for_patch = cached_data
@@ -869,9 +931,10 @@ class ConceptLearner:
                     print("no need to separate")
                 patch_emb_ls[idx] = patch_activations
                 img_per_batch_ls[idx] = img_for_patch
+                bboxes_ls[idx] = bboxes
                 if save_mask_bbox:
                     masks_ls[idx] = masks
-                    bboxes_ls[idx] = bboxes
+                    
                     
                 patch_count_for_compute_ls[idx] = False
                 
@@ -879,7 +942,7 @@ class ConceptLearner:
                     utils.save((patch_activations, masks, bboxes, img_for_patch), cached_file_name)
                     # return cached_img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
                 else:
-                    utils.save((patch_activations, img_for_patch), cached_file_name)
+                    utils.save((patch_activations, bboxes, img_for_patch), cached_file_name)
                 
                 # if save_mask_bbox:  
                 #     return img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
@@ -906,9 +969,9 @@ class ConceptLearner:
         # bboxes = masks_to_bboxes(masks)
         # get_patches_from_bboxes(model, images, all_bboxes, input_processor, sub_bboxes=None, image_size=(224, 224), processor=None, resize=None, device="cpu"):
         if not use_mask:
-            get_patches_from_bboxes(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, self.input_processor, device=self.device, resize=self.image_size)
+            get_patches_from_bboxes(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, self.input_processor, device=self.device, resize=self.image_size, save_mask_bbox=save_mask_bbox)
         else:
-            get_patches_from_bboxes0(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, bboxes, self.input_processor, device=self.device, resize=self.image_size)
+            get_patches_from_bboxes0(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, bboxes, self.input_processor, device=self.device, resize=self.image_size, save_mask_bbox=save_mask_bbox)
         
         # if save_mask_bbox:
         #     patch_activations, img_for_patch, masks, bboxes = res
@@ -960,7 +1023,7 @@ class ConceptLearner:
                 # return cached_img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
             else:
                 patch_activations, img_for_patch = patch_emb_ls[patch_count_idx], img_per_batch_ls[patch_count_idx]
-                utils.save((patch_activations, img_for_patch), cached_file_name)
+                utils.save((patch_activations, bboxes, img_for_patch), cached_file_name)
                 # return img_idx_ls, image_embs, patch_activations, img_for_patch
         
         # if save_mask_bbox:
