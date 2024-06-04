@@ -91,7 +91,7 @@ def load_atom_datasets(data_path):
 def load_flickr_dataset(data_path, query_path):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
-    img_caption_file_name= os.path.join(query_path, "sub_queries2.csv")
+    img_caption_file_name= os.path.join(query_path, "sub_queries.csv")
 
     img_folder = os.path.join(data_path, "flickr30k-images/")
     # img_folder2 = os.path.join(data_path, "VG_100K_2/")

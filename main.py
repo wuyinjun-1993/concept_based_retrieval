@@ -235,7 +235,8 @@ if __name__ == "__main__":
         # if not args.query_concept:    
         #     patch_count_ls = [4, 8, 16, 32, 64, 128]
         # else:
-            patch_count_ls = [4, 8, 16, 32, 64, 128]
+            # patch_count_ls = [4, 8, 16, 32, 64, 128]
+            patch_count_ls = [4, 16, 64]
     else:
         # patch_count_ls = [8, 24, 32]
         # patch_count_ls = [1, 16, 8, 4, 2, 24, 32]
