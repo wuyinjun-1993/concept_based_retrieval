@@ -12,7 +12,7 @@ import re
 from vector_dataset import Partitioned_vector_dataset, collate_fn
 import time
 # openai.api_key = os.getenv("OPENAI_API_KEY")
-
+import pandas as pd
 def obtain_key_words(query):
     client = OpenAI(
         # This is the default and can be omitted
@@ -150,6 +150,35 @@ def decompose_single_query_ls(curr_query_ls):
     # decomposed_q = re.split(reg_pattern, curr_query)
     # decomposed_q = [dq.strip() for dq in decomposed_q if len(dq.strip()) > 0]
     return all_decomposed_q_ls
+
+def decompose_single_query_parition_groups(all_decomposed_q_ls, curr_group_ls):
+    if pd.isnull(curr_group_ls): # len(curr_group_ls) <= 0:
+        return None
+        # all_grouped_ids_ls = []
+        # for idx in range(len(all_decomposed_q_ls)):
+        #     decomposed_q_ls = all_decomposed_q_ls[idx]
+        #     grouped_ids = [list(range(len(decomposed_q_ls)))]
+        #     all_grouped_ids_ls.append(all_grouped_ids_ls)
+        # return all_grouped_ids_ls
+    
+    curr_group_ls = decompose_single_query(curr_group_ls, reg_pattern="#")
+    
+    assert len(curr_group_ls) == len(all_decomposed_q_ls)
+    
+    all_grouped_ids_ls = []
+    
+    for curr_group_str in curr_group_ls:
+        sub_group_str_decomposed_ls = decompose_single_query(curr_group_str, reg_pattern="\|")
+        
+        curr_grouped_ids_ls = []
+        for sub_group_str_decomposed in sub_group_str_decomposed_ls:
+            grouped_ids = decompose_single_query(sub_group_str_decomposed)
+            grouped_ids = [int(gid) for gid in grouped_ids]
+            curr_grouped_ids_ls.append(grouped_ids)
+            
+        all_grouped_ids_ls.append(curr_grouped_ids_ls)
+        
+    return all_grouped_ids_ls
 
 def decompose_queries_by_clauses(queries):
     decomposed_queries = list()
