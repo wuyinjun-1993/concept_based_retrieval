@@ -188,10 +188,11 @@ def load_other_sharegpt4v_mscoco_images(dataset_path, img_idx_ls, img_file_name_
     return img_idx_ls, img_file_name_ls
 
 
-def load_crepe_datasets(data_path, query_path):
+def load_crepe_datasets(data_path, query_path, subset_img_id=None):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
-    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6.csv")
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6.csv")
+    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6_2.csv")
 
     img_folder = os.path.join(data_path, "VG_100K/")
     img_folder2 = os.path.join(data_path, "VG_100K_2/")
@@ -221,12 +222,18 @@ def load_crepe_datasets(data_path, query_path):
         
         # sub_captions = decompose_single_query(sub_caption_str)
         sub_captions = decompose_single_query_ls(sub_caption_str)
+        # print(sub_captions)
         # img_ls.append(img)
         img_idx_ls.append(image_idx)
         caption_ls.append(caption)
         sub_caption_ls.append(sub_captions)
         img_file_name_ls.append(full_img_file_name)
-    return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls
+    # return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls
+    if subset_img_id is None:
+        return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls
+    else:
+        print(sub_caption_ls[subset_img_id])
+        return [caption_ls[subset_img_id]], [img_file_name_ls[subset_img_id]], [sub_caption_ls[subset_img_id]], [img_idx_ls[subset_img_id]]
 
 def replace_comma_with_vertical_line(caption_pd, file_name):
     for idx in range(len(caption_pd)):
@@ -1023,7 +1030,7 @@ class ConceptLearner:
                 utils.save((patch_activations, masks, bboxes, img_for_patch), cached_file_name)
                 # return cached_img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
             else:
-                patch_activations, img_for_patch = patch_emb_ls[patch_count_idx], img_per_batch_ls[patch_count_idx]
+                patch_activations, img_for_patch, bboxes = patch_emb_ls[patch_count_idx], img_per_batch_ls[patch_count_idx], bboxes_ls[patch_count_idx]
                 utils.save((patch_activations, bboxes, img_for_patch), cached_file_name)
                 # return img_idx_ls, image_embs, patch_activations, img_for_patch
         
@@ -1247,12 +1254,14 @@ def convert_samples_to_concepts_img(args, samples_hash, model, img_file_name_ls,
     #     return img_ls, img_emb, patch_emb_ls, img_per_batch_ls        
 
 
-def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb):
+def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb, bbox_ls=None):
     img_per_patch_tensor = torch.tensor(img_per_patch_ls[0])
     max_img_id = int(torch.max(img_per_patch_tensor).item())
     patch_emb_curr_img_ls = []
+    transformed_bbox_ls = []
     for idx in tqdm(range(max_img_id + 1)):
         sub_patch_emb_curr_img_ls = []
+        sub_transformed_bbox_ls = []
         for sub_idx in range(len(patch_emb_ls)):
             patch_emb = patch_emb_ls[sub_idx]
             # img_per_batch = img_per_patch_ls[sub_idx]
@@ -1263,8 +1272,49 @@ def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb):
             # curr_selected_ids = torch.nonzero(img_per_patch_tensor == idx).view(-1)
             # patch_emb_curr_img = patch_emb[curr_selected_ids]
             sub_patch_emb_curr_img_ls.append(patch_emb_curr_img)
+            if bbox_ls is not None:
+                sub_transformed_bbox_ls.extend(bbox_ls[sub_idx][idx])
         sub_patch_emb_curr_img_ls.append(img_emb[idx].unsqueeze(0))
         patch_emb_curr_img = torch.cat(sub_patch_emb_curr_img_ls, dim=0)
         # patch_emb_curr_img = torch.cat([img_emb[idx].unsqueeze(0), sub_patch_emb_curr_img], dim=0)
         patch_emb_curr_img_ls.append(patch_emb_curr_img)
-    return patch_emb_curr_img_ls
+        if bbox_ls is not None:
+            transformed_bbox_ls.append(sub_transformed_bbox_ls)
+    
+    return patch_emb_curr_img_ls, transformed_bbox_ls
+
+
+def is_bbox_overlapped(bbox1, bbox2):
+    x1_1, y1_1, x2_1, y2_1 = bbox1
+    x1_2, y1_2, x2_2, y2_2 = bbox2
+    
+    # Calculate intersection area
+    intersection_area = max(0, min(x2_1, x2_2) - max(x1_1, x1_2)) * max(0, min(y2_1, y2_2) - max(y1_1, y1_2))
+    
+    # Check if the intersection area is positive
+    return intersection_area > 0
+
+
+def determine_overlapped_bboxes(bboxes_ls):
+    
+    bbox_nb_ls = []
+    
+    for b_idx in range(len(bboxes_ls)):
+        bboxes = bboxes_ls[b_idx]
+        curr_nb_ls = [[] for _ in range(len(bboxes) + 1)]
+        for idx in range(len(bboxes)):
+            bbox = bboxes[idx]
+            
+            for sub_idx in range(len(bboxes)):
+                if idx != sub_idx:
+                    sub_bbox = bboxes[sub_idx]
+                    if is_bbox_overlapped(bbox, sub_bbox):
+                        curr_nb_ls[idx].append(sub_idx)
+                else:
+                    curr_nb_ls[idx].append(sub_idx)
+            curr_nb_ls[idx].append(len(bboxes))
+        
+        curr_nb_ls[len(bboxes)].append(list(range(len(bboxes) + 1)))
+        bbox_nb_ls.append(curr_nb_ls)
+    
+    return bbox_nb_ls

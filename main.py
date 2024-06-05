@@ -6,7 +6,7 @@ from sklearn.metrics import top_k_accuracy_score
 from beir.retrieval.evaluation import EvaluateRetrieval
 from retrieval_utils import *
 from beir.retrieval.search.dense import DenseRetrievalExactSearch as DRES
-from beir.retrieval.search.dense.exact_search import one, two, three
+from beir.retrieval.search.dense.exact_search import one, two, three, four
 from beir.retrieval import models
 from beir import LoggingHandler
 from datasets import load_dataset
@@ -110,6 +110,7 @@ def parse_args():
     parser.add_argument('--algebra_method', type=str, default=one, help='config file')
     # closeness_threshold
     parser.add_argument('--closeness_threshold', type=float, default=0.1, help='config file')
+    parser.add_argument('--subset_img_id', type=int, default=None, help='config file')
     
     
     args = parser.parse_args()
@@ -198,7 +199,7 @@ if __name__ == "__main__":
         load_atom_datasets(full_data_path)
     
     elif args.dataset_name == "crepe":
-        queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
+        queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path, subset_img_id=args.subset_img_id)
         # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
         img_idx_ls, img_file_name_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
         # args.algebra_method=two
@@ -251,7 +252,7 @@ if __name__ == "__main__":
         samples_hash = obtain_sample_hash(img_idx_ls, img_file_name_ls)
         # cached_img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
         # if args.save_mask_bbox:
-        cached_img_ls, img_emb, patch_emb_ls, _, _, img_per_patch_ls = convert_samples_to_concepts_img(args, samples_hash, model, img_file_name_ls, img_idx_ls, processor, device, patch_count_ls=patch_count_ls,save_mask_bbox=args.save_mask_bbox)
+        cached_img_ls, img_emb, patch_emb_ls, _, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, samples_hash, model, img_file_name_ls, img_idx_ls, processor, device, patch_count_ls=patch_count_ls,save_mask_bbox=args.save_mask_bbox)
         # else:
         #     cached_img_ls, img_emb, patch_emb_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, samples_hash, model, img_file_name_ls, img_idx_ls, processor, device, patch_count_ls=patch_count_ls,save_mask_bbox=args.save_mask_bbox)
             
@@ -266,7 +267,9 @@ if __name__ == "__main__":
     patch_emb_by_img_ls = patch_emb_ls
     if args.img_concept:
         # if args.is_img_retrieval:
-        patch_emb_by_img_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb)
+        patch_emb_by_img_ls, bboxes_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb, bbox_ls=bboxes_ls)
+        
+        bboxes_overlap_ls = determine_overlapped_bboxes(bboxes_ls)
     
     if args.search_by_cluster:
         if args.img_concept:
@@ -333,15 +336,15 @@ if __name__ == "__main__":
     # if args.query_concept:
     if not args.img_concept:
         if not args.search_by_cluster:
-            results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
+            results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls)
         else:
-            results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls))
+            results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls)
     else:
         
         if not args.search_by_cluster:
-            results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel)
+            results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls)
         else:
-            results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls))
+            results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls)
     
     final_res_file_name = utils.get_final_res_file_name(args, patch_count_ls)
     print("The results are stored at ", final_res_file_name)

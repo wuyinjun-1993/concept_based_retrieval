@@ -10,12 +10,22 @@ import multiprocessing
 from joblib import Parallel, delayed
 import threading
 import os
-
+import cv2
 #Parent class for any dense model
 
 one="one"
 two="two"
 three="three"
+four="four"
+
+def draw_bbox_on_single_image(img_file_name, bbox_ls):
+    img = cv2.imread(img_file_name)
+    for bbox in bbox_ls:
+        x1, y1, x2, y2 = bbox
+        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    
+    cv2.imwrite("img_with_bbox.jpg", img)
+
 
 class DenseRetrievalExactSearch:
     
@@ -37,7 +47,7 @@ class DenseRetrievalExactSearch:
                top_k: List[int], 
                score_function: str,
                return_sorted: bool = False, 
-               query_negations: List=None, all_sub_corpus_embedding_ls=None, query_embeddings=None, query_count=10, device = 'cuda',
+               query_negations: List=None, all_sub_corpus_embedding_ls=None, query_embeddings=None, query_count=10, device = 'cuda', bboxes_ls=None, img_file_name_ls=None, bboxes_overlap_ls=None,
                **kwargs) -> Dict[str, Dict[str, float]]:
         #Create embeddings for all queries using model.encode_queries()
         #Runs semantic search against the corpus embeddings
@@ -119,9 +129,9 @@ class DenseRetrievalExactSearch:
             # torch.save(all_sub_corpus_embedding_ls, 'output/all_sub_corpus_embedding_ls')
         
         # all_sub_corpus_embedding_ls = [item.to(device) for item in all_sub_corpus_embedding_ls]
-        
+        corpus_idx = 0
         for sub_corpus_embeddings in tqdm(all_sub_corpus_embedding_ls):
-
+    
             #Compute similarites using either cosine-similarity or dot product
             cos_scores = []
             # for query_itr in range(len(query_embeddings)):
@@ -147,12 +157,30 @@ class DenseRetrievalExactSearch:
                             # curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
                             if self.algebra_method == one or self.algebra_method == three:
                                 curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
-                            else:
+                            elif self.algebra_method == two:
                                 curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
+                                
+                                curr_scores_ls_max_id = torch.argmax(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
+                            else:
+                                
+                                selected_embedding_idx = torch.arange(sub_corpus_embeddings.shape[0])
+                                beam_search_topk=min(10, curr_query_embedding.shape[0])
+                                curr_scores = torch.ones(1).to(device)
+                                for sub_query_idx in range(curr_query_embedding.shape[0]):
+                                    prod_mat = self.score_functions[score_function](curr_query_embedding[sub_query_idx].to(device), sub_corpus_embeddings[selected_embedding_idx].to(device)).view(-1,1)*curr_scores.view(1,-1)
+                                    curr_scores_ls, topk_ids = torch.topk(prod_mat.view(-1), k=beam_search_topk, dim=-1)
+                                    topk_emb_ids = topk_ids // prod_mat.shape[1]
+                                    topk_emb_ids = selected_embedding_idx.to(device)[topk_emb_ids]
+                                    topk_emb_ids = list(set(topk_emb_ids.tolist()))
+                                    selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in topk_emb_ids])
+                                    curr_scores = curr_scores_ls
+                                curr_scores = torch.max(curr_scores)
+                                # curr_scores_ls2 = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
+                                
                         else:    
                             curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))
                         
-                        
+                        # whole_img_sim = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device)).view(-1)
                         # curr_scores = torch.prod(curr_scores_ls, dim=0)
                         # for conj_id in range(len(curr_scores_ls)):
                         #     curr_scores *= curr_scores_ls[conj_id]
@@ -164,9 +192,19 @@ class DenseRetrievalExactSearch:
                             curr_scores = torch.max(torch.sum(curr_scores_ls, dim=0))
                             # curr_scores = torch.max(torch.max(curr_scores_ls, dim=0))
                             full_curr_scores_ls.append(curr_scores.item())
-                        else:
+                        elif self.algebra_method == two:
+                            
+                            # if torch.sum(curr_scores_ls - whole_img_sim > 0.2) > 0:
+                            #     print()
+                            
+                            # curr_scores_ls[curr_scores_ls2 - whole_img_sim > 0.2] = whole_img_sim[curr_scores_ls2 - whole_img_sim > 0.2]
+                            # curr_scores_ls[whole_img_sim - curr_scores_ls2 > 0.2] = curr_scores_ls2[whole_img_sim - curr_scores_ls2 > 0.2]
+                            
                             curr_scores = torch.prod(curr_scores_ls)
                             # curr_scores = torch.sum(curr_scores_ls)
+                            # curr_scores = torch.sum(curr_scores_ls)
+                            full_curr_scores_ls.append(curr_scores.item())
+                        else:
                             full_curr_scores_ls.append(curr_scores.item())
                     
                     curr_scores = torch.tensor(full_curr_scores_ls)
@@ -182,11 +220,13 @@ class DenseRetrievalExactSearch:
                 cos_scores.append(curr_scores)
             cos_scores = torch.stack(cos_scores)
             all_cos_scores.append(cos_scores)
+            
+            corpus_idx += 1
         
         all_cos_scores_tensor = torch.stack(all_cos_scores, dim=-1)
         all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
-        all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
-        # all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+        # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
+        all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
         #Get top-k values
         cos_scores_top_k_values, cos_scores_top_k_idx = torch.topk(all_cos_scores_tensor, min(top_k+1, len(all_cos_scores_tensor[0])), dim=1, largest=True)#, sorted=return_sorted)
         cos_scores_top_k_values = cos_scores_top_k_values.cpu().tolist()
