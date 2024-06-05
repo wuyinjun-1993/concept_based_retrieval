@@ -193,6 +193,9 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None):
     
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6.csv")
     img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6_2.csv")
+    
+    with open("prod_hard_negatives/selected_img_id_ls", "rb") as f:
+        selected_img_id_ls = pickle.load(f)
 
     img_folder = os.path.join(data_path, "VG_100K/")
     img_folder2 = os.path.join(data_path, "VG_100K_2/")
@@ -207,6 +210,8 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None):
     for idx in range(len(caption_pd)):
         image_idx = caption_pd.iloc[idx]['image_id']
         if image_idx in img_idx_ls:
+            continue
+        if image_idx not in selected_img_id_ls:
             continue
         
         full_img_file_name = os.path.join(img_folder, str(image_idx) + ".jpg")
@@ -297,12 +302,18 @@ def load_other_crepe_images(data_path, query_path, img_idx_ls, img_file_name_ls,
     img_folder = os.path.join(data_path, "VG_100K/")
     img_folder2 = os.path.join(data_path, "VG_100K_2/")
 
+    with open("prod_hard_negatives/selected_img_id_ls", "rb") as f:
+        selected_img_id_ls = pickle.load(f)
+
     caption_pd = pd.read_csv(img_caption_file_name)
     if total_count > 0 and len(img_file_name_ls) >= total_count:
         return img_idx_ls, img_file_name_ls          
     for idx in range(len(caption_pd)):
         image_idx = caption_pd.iloc[idx]['image_id']
         if image_idx in img_idx_ls:
+            continue
+        
+        if not image_idx in selected_img_id_ls:
             continue
         
         full_img_file_name = os.path.join(img_folder, str(image_idx) + ".jpg")
