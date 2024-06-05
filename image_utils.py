@@ -222,7 +222,7 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None):
         
         # sub_captions = decompose_single_query(sub_caption_str)
         sub_captions = decompose_single_query_ls(sub_caption_str)
-        # print(sub_captions)
+        print(sub_captions)
         # img_ls.append(img)
         img_idx_ls.append(image_idx)
         caption_ls.append(caption)
@@ -1292,7 +1292,10 @@ def is_bbox_overlapped(bbox1, bbox2):
     intersection_area = max(0, min(x2_1, x2_2) - max(x1_1, x1_2)) * max(0, min(y2_1, y2_2) - max(y1_1, y1_2))
     
     # Check if the intersection area is positive
-    return intersection_area > 0
+    size1 = (x2_1 - x1_1) * (y2_1 - y1_1)
+    size2 = (x2_2 - x1_2) * (y2_2 - y1_2)
+    min_size = min(size1, size2)
+    return intersection_area > 0.5 * min_size
 
 
 def determine_overlapped_bboxes(bboxes_ls):
