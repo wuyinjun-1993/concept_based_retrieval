@@ -181,7 +181,12 @@ if __name__ == "__main__":
     
     
     # origin_corpus = None
+    bboxes_ls = None
     grouped_sub_q_ids_ls = None
+    bboxes_overlap_ls = None
+    img_file_name_ls = None
+    
+    # , bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls
     
     if args.dataset_name == "flickr":
         queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_flickr_dataset(full_data_path, full_data_path)
@@ -245,8 +250,8 @@ if __name__ == "__main__":
             patch_count_ls = [4, 8, 16, 64]
     else:
         # patch_count_ls = [8, 24, 32]
-        # patch_count_ls = [1, 16, 8, 4, 2, 24, 32]
-        patch_count_ls = [1]
+        patch_count_ls = [1, 16, 8, 4]
+        # patch_count_ls = [1]
         # patch_count_ls = [32]
     
     if args.is_img_retrieval:
@@ -267,10 +272,13 @@ if __name__ == "__main__":
     
     patch_emb_by_img_ls = patch_emb_ls
     if args.img_concept:
-        # if args.is_img_retrieval:
-        patch_emb_by_img_ls, bboxes_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb, bbox_ls=bboxes_ls)
+        if args.is_img_retrieval:
+            patch_emb_by_img_ls, bboxes_ls = reformat_patch_embeddings(patch_emb_ls, None, img_emb, bbox_ls=bboxes_ls)
+        else:
+            patch_emb_by_img_ls, bboxes_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb, bbox_ls=bboxes_ls)
         
-        bboxes_overlap_ls = determine_overlapped_bboxes(bboxes_ls)
+        if args.is_img_retrieval:
+            bboxes_overlap_ls = determine_overlapped_bboxes(bboxes_ls)
     
     if args.search_by_cluster:
         if args.img_concept:
