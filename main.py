@@ -221,7 +221,9 @@ if __name__ == "__main__":
         data_path = util.download_and_unzip(url, full_data_path)
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
         
-        queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_subs2.jsonl"))
+        queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_subs.jsonl"))
+        
+        print(sub_queries_ls)
         
         subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
         if False: #os.path.exists(subset_file_name):
@@ -250,7 +252,7 @@ if __name__ == "__main__":
             patch_count_ls = [4, 8, 16, 64]
     else:
         # patch_count_ls = [8, 24, 32]
-        patch_count_ls = [1, 16, 8, 4]
+        patch_count_ls = [1, 16, 8, 4, 32]
         # patch_count_ls = [1]
         # patch_count_ls = [32]
     

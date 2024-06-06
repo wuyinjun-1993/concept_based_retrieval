@@ -158,9 +158,9 @@ class DenseRetrievalExactSearch:
                         curr_scores = 1
                         
                         if len(sub_corpus_embeddings.shape) == 2 and sub_corpus_embeddings.shape[0] > 1:
-                            if curr_query_embedding.shape[0] == 1:
-                                curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
-                            else:
+                            # if curr_query_embedding.shape[0] == 1:
+                            #     curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
+                            # else:
                                 # curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
                                 if self.algebra_method == one or self.algebra_method == three:
                                     curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
@@ -247,8 +247,8 @@ class DenseRetrievalExactSearch:
         
         all_cos_scores_tensor = torch.stack(all_cos_scores, dim=-1)
         all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
-        # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
-        all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+        all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
+        # all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
         #Get top-k values
         cos_scores_top_k_values, cos_scores_top_k_idx = torch.topk(all_cos_scores_tensor, min(top_k+1, len(all_cos_scores_tensor[0])), dim=1, largest=True)#, sorted=return_sorted)
         cos_scores_top_k_values = cos_scores_top_k_values.cpu().tolist()
