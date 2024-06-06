@@ -7,6 +7,7 @@ from torch.autograd import Variable
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.cluster import Birch
 from sklearn.cluster import DBSCAN
+import os
 
 def online_clustering(X, closeness_threshold=0.1):
     print("closeness threshold::", closeness_threshold)
@@ -168,7 +169,7 @@ def get_clustering_res_file_name(args, patch_count_ls):
     
 # 0.12 for trec covid 10000
 # 0.2
-def clustering_img_patch_embeddings(X_by_img_ls, dataset_name, X_ls, img_per_patch_ls, closeness_threshold = 0.1):
+def clustering_img_patch_embeddings(X_by_img_ls, dataset_name, X_ls, closeness_threshold = 0.1):
     """
     Determine the optimal number of clusters using the elbow method.
 
@@ -197,9 +198,16 @@ def clustering_img_patch_embeddings(X_by_img_ls, dataset_name, X_ls, img_per_pat
     # clustering = DBSCAN(eps=0.1, min_samples=2, metric="cosine").fit(X.cpu().numpy())
     # clustering_labels = clustering.labels_
     # threshold
-    centroid_ls, clustering_labels = online_clustering(X, closeness_threshold=closeness_threshold)
-    torch.save(centroid_ls, f"output/{dataset_name}_centroid_ls_{closeness_threshold}.pt")
-    torch.save(clustering_labels, f"output/{dataset_name}_clustering_labels_{closeness_threshold}.pt")
+    
+    centroid_ls_file_name=f"output/{dataset_name}_centroid_ls_{closeness_threshold}.pt"
+    clustering_labels_file_name=f"output/{dataset_name}_clustering_labels_{closeness_threshold}.pt"
+    if os.path.exists(centroid_ls_file_name) and os.path.exists(clustering_labels_file_name):
+        centroid_ls = torch.load(centroid_ls_file_name)
+        clustering_labels = torch.load(clustering_labels_file_name)
+    else:
+        centroid_ls, clustering_labels = online_clustering(X, closeness_threshold=closeness_threshold)
+        torch.save(centroid_ls, f"output/{dataset_name}_centroid_ls_{closeness_threshold}.pt")
+        torch.save(clustering_labels, f"output/{dataset_name}_clustering_labels_{closeness_threshold}.pt")
     print(f"Number of clusters: {len(centroid_ls)}")
     # verify_clustering(X, clustering_labels)
 

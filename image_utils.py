@@ -1318,31 +1318,67 @@ def is_bbox_overlapped(bbox1, bbox2):
     return intersection_area > 0.5 * min_size
 
 
-def determine_overlapped_bboxes(bboxes_ls):
+def is_bbox_overlapped_text(bbox1, bbox2):
+    x1_1, x2_1 = bbox1
+    x1_2, x2_2 = bbox2
+    
+    # Calculate intersection area
+    intersection_area = max(0, min(x2_1, x2_2) - max(x1_1, x1_2))
+    
+    # Check if the intersection area is positive
+    size1 = (x2_1 - x1_1)# * (y2_1 - y1_1)
+    size2 = (x2_2 - x1_2)# * (y2_2 - y1_2)
+    min_size = min(size1, size2)
+    return intersection_area > 0.5 * min_size
+
+def determine_overlapped_bboxes(bboxes_ls, is_img_retrieval=False):
     
     bbox_nb_ls = []
     
-    for b_idx in range(len(bboxes_ls)):
+    for b_idx in tqdm(range(len(bboxes_ls))):
         bboxes = bboxes_ls[b_idx]
+        
         # curr_nb_ls = [[] for _ in range(len(bboxes) + 1)]
-        curr_nb_ls = [[] for _ in range(len(bboxes))]
+        if is_img_retrieval:
+            curr_nb_ls = [[] for _ in range(len(bboxes))]
+        else:
+            curr_nb_ls = [[] for _ in range(len(bboxes) + 1)]
         for idx in range(len(bboxes)):
             bbox = bboxes[idx]
             
             for sub_idx in range(len(bboxes)):
                 if idx != sub_idx:
                     sub_bbox = bboxes[sub_idx]
-                    if is_bbox_overlapped(bbox, sub_bbox):
-                        curr_nb_ls[idx].append(sub_idx)
+                    if is_img_retrieval:
+                        if is_bbox_overlapped(bbox, sub_bbox):
+                            curr_nb_ls[idx].append(sub_idx)
+                    else:
+                        if is_bbox_overlapped_text(bbox, sub_bbox):
+                            curr_nb_ls[idx].append(sub_idx)
                 else:
                     curr_nb_ls[idx].append(sub_idx)
-            # curr_nb_ls[idx].append(len(bboxes))
-        
-        # curr_nb_ls[len(bboxes)].extend(list(range(len(bboxes) + 1)))
+            if not is_img_retrieval:
+                curr_nb_ls[idx].append(len(bboxes))
+        if not is_img_retrieval:
+            curr_nb_ls[len(bboxes)].extend(list(range(len(bboxes) + 1)))
         bbox_nb_ls.append(curr_nb_ls)
     
     return bbox_nb_ls
 
+
+def add_full_bbox_to_bbox_nb_ls(bbox_nb_ls, bboxes_ls, patch_img_embes_ls):
+    for idx in range(len(bbox_nb_ls)):
+        patch_img_embes = patch_img_embes_ls[idx]
+        bboxes = bboxes_ls[idx]
+        bbox_nbs = bbox_nb_ls[idx]
+        if len(bbox_nbs) < len(patch_img_embes):
+            
+            for sub_idx in range(len(bbox_nbs)):
+                bbox_nbs[sub_idx].append(len(bboxes))
+            
+            bbox_nbs.append(list(range(len(bboxes) + 1)))
+            
+        
 
 # def determine_overlapped_bboxes(bboxes_ls):
     

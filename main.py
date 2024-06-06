@@ -111,6 +111,9 @@ def parse_args():
     # closeness_threshold
     parser.add_argument('--closeness_threshold', type=float, default=0.1, help='config file')
     parser.add_argument('--subset_img_id', type=int, default=None, help='config file')
+    parser.add_argument('--prob_agg', type=str, default="prod", choices=["prod", "sum"], help='config file')
+    parser.add_argument('--dependency_topk', type=int, default=20, help='config file')
+    
     
     
     args = parser.parse_args()
@@ -221,7 +224,7 @@ if __name__ == "__main__":
         data_path = util.download_and_unzip(url, full_data_path)
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
         
-        queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_subs.jsonl"))
+        queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_subs.jsonl"), subset_img_id=args.subset_img_id)
         
         print(sub_queries_ls)
         
@@ -240,7 +243,8 @@ if __name__ == "__main__":
         
         origin_corpus = None #copy.copy(corpus)
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
-        args.algebra_method=three
+        grouped_sub_q_ids_ls = [None for _ in range(len(queries))]
+        # args.algebra_method=three
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "crepe/"))
         # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "crepe/crepe_captions.txt"))
     
@@ -272,25 +276,40 @@ if __name__ == "__main__":
         
 
     elif args.dataset_name in text_retrieval_datasets:
-        img_emb, patch_emb_ls = convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_count_ls=patch_count_ls)
+        samples_hash,img_emb, patch_emb_ls, bboxes_ls = convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_count_ls=patch_count_ls)
         # img_emb = text_model.encode_corpus(corpus)
-        if args.img_concept:
-            _,img_per_patch_ls, patch_emb_ls = generate_patch_ids_ls(patch_emb_ls)
+        # if args.img_concept:
+        #     _,img_per_patch_ls, patch_emb_ls = generate_patch_ids_ls(patch_emb_ls)
+    else:
+        print("Invalid dataset name, exit!")
+        exit(1)
     
     patch_emb_by_img_ls = patch_emb_ls
     if args.img_concept:
-        if args.is_img_retrieval:
-            patch_emb_by_img_ls, bboxes_ls = reformat_patch_embeddings(patch_emb_ls, None, img_emb, bbox_ls=bboxes_ls)
-        else:
-            patch_emb_by_img_ls, bboxes_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb, bbox_ls=bboxes_ls)
+        # if args.is_img_retrieval:
+        patch_emb_by_img_ls, bboxes_ls = reformat_patch_embeddings(patch_emb_ls, None, img_emb, bbox_ls=bboxes_ls)
+        # else:
+        #     patch_emb_by_img_ls, bboxes_ls = reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb, bbox_ls=bboxes_ls)
         
-        if args.is_img_retrieval:
-            bboxes_overlap_ls = determine_overlapped_bboxes(bboxes_ls)
+        # if args.is_img_retrieval:
+        patch_count_ls = sorted(patch_count_ls)
+        patch_count_str = "_".join([str(item) for item in patch_count_ls])
+        
+        bboxes_overlap_file_name = "output/bboxes_overlap_" + samples_hash + "_" + patch_count_str + ".pkl"
+        if os.path.exists(bboxes_overlap_file_name):
+            bboxes_overlap_ls = utils.load(bboxes_overlap_file_name)
+        else:
+            bboxes_overlap_ls = determine_overlapped_bboxes(bboxes_ls, is_img_retrieval=args.is_img_retrieval)
+            utils.save(bboxes_overlap_ls, bboxes_overlap_file_name)
+        if not args.is_img_retrieval:
+            add_full_bbox_to_bbox_nb_ls(bboxes_overlap_ls, bboxes_ls, patch_emb_by_img_ls)
+        
+        
     
     if args.search_by_cluster:
         if args.img_concept:
             # cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls
-            cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls = clustering_img_patch_embeddings(patch_emb_by_img_ls, args.dataset_name + "_" + str(args.total_count), patch_emb_ls, img_per_patch_ls, closeness_threshold=args.closeness_threshold)
+            cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls = clustering_img_patch_embeddings(patch_emb_by_img_ls, args.dataset_name + "_" + str(args.total_count), patch_emb_ls, closeness_threshold=args.closeness_threshold)
             
             patch_clustering_info_cached_file = get_clustering_res_file_name(args, patch_count_ls)
             
@@ -340,7 +359,7 @@ if __name__ == "__main__":
             qrels = construct_qrels(queries, cached_img_ls, img_idx_ls, query_count=args.query_count)
     
     # if args.is_img_retrieval:
-    retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=args.is_img_retrieval)
+    retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=args.is_img_retrieval, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
     # else:
     #     retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=one)
     retriever = EvaluateRetrieval(retrieval_model, score_function="cos_sim") # or "cos_sim" for cosine similarity

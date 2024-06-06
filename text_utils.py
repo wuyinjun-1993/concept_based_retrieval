@@ -5,6 +5,7 @@ from tqdm import tqdm
 
 import re
 import json
+from retrieval_utils import decompose_single_query_parition_groups
 
 class ConceptLearner_text:
     # def __init__(self, samples: list[PIL.Image], input_to_latent, input_processor, device: str = 'cpu'):
@@ -40,16 +41,18 @@ class ConceptLearner_text:
         # corpus_content_split = [x.strip() for x in corpus_content_split if len(x) > 0]
         corpus_content_split = self.split_corpus_ls[corpus_idx] # [corpus["title"]] + corpus_content_split
         
+        bbox_ls = []
         
         for idx in range(len(corpus_content_split)):
             end_idx = min(idx+patch_count, len(corpus_content_split))
             sentence_ls.append(" ".join(corpus_content_split[idx:end_idx]))
+            bbox_ls.append([idx, end_idx])
             if idx+patch_count >= len(corpus_content_split):
                 break
         
         curr_corpus_embedding = self.model.encode_str_ls(sentence_ls, convert_to_tensor=True)
         
-        return curr_corpus_embedding.cpu()
+        return curr_corpus_embedding.cpu(), bbox_ls
         
     
     
@@ -60,15 +63,15 @@ class ConceptLearner_text:
         if os.path.exists(cached_file_name):
             print("Loading cached patches")
             print(samples_hash)
-            patch_activations = utils.load(cached_file_name)
+            patch_activations, full_bbox_ls = utils.load(cached_file_name)
             # if image_embs is None and compute_img_emb:
             #     image_embs = self.get_corpus_embeddings()
-            if type(patch_activations) is list:
-                patch_activations = [key.cpu() for key in patch_activations]
-            elif type(patch_activations) is dict:
-                patch_activations = [patch_activations[key].cpu() for key in range(len(patch_activations))]
-                utils.save(patch_activations, cached_file_name)
-            return patch_activations
+            # if type(patch_activations) is list:
+            #     patch_activations = [key.cpu() for key in patch_activations]
+            # elif type(patch_activations) is dict:
+            #     patch_activations = [patch_activations[key].cpu() for key in range(len(patch_activations))]
+            #     utils.save(patch_activations, cached_file_name)
+            return patch_activations, full_bbox_ls
         
         # if compute_img_emb:
         #     image_embs = self.get_corpus_embeddings()
@@ -77,15 +80,17 @@ class ConceptLearner_text:
             self.split_corpus()
         
         patch_activations = []
+        full_bbox_ls = []
         
         for key in range(len(self.corpus)):
-            patch_activation = self.split_and_encoding_single_corpus(key, patch_count=patch_count)
+            patch_activation, bbox_ls = self.split_and_encoding_single_corpus(key, patch_count=patch_count)
             # patch_activations[key] = torch.cat(patch_activation)
             patch_activations.append(patch_activation)
+            full_bbox_ls.append(bbox_ls)
         
-        utils.save(patch_activations, cached_file_name)
+        utils.save((patch_activations, full_bbox_ls), cached_file_name)
         
-        return patch_activations
+        return patch_activations, full_bbox_ls
 
 def generate_patch_ids_ls(patch_embs_ls):
     patch_ids_ls = []
@@ -122,19 +127,21 @@ def convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_coun
     
     if args.img_concept:
         patch_activation_ls=[]
+        full_bbox_ls = []
         for idx in tqdm(range(len(patch_count_ls))):
             patch_count = patch_count_ls[idx]
-            patch_activations = cl.get_patches(samples_hash, method="slic", patch_count=patch_count)
+            patch_activations, bbox_ls = cl.get_patches(samples_hash, method="slic", patch_count=patch_count)
             # cos_sim_ls = []
             # for sub_idx in range(len(patch_activations)):
             #     cos_sim = torch.nn.functional.cosine_similarity(img_emb[sub_idx].view(1,-1), patch_activations[sub_idx].view(1,-1)).item()
             #     cos_sim_ls.append(cos_sim)
             # print()
             patch_activation_ls.append(patch_activations)
+            full_bbox_ls.append(bbox_ls)
         
-        return img_emb, patch_activation_ls
+        return samples_hash, img_emb, patch_activation_ls, full_bbox_ls
     else:
-        return img_emb, None
+        return samples_hash, img_emb, None, None
 
 def convert_corpus_to_concepts_txt(corpus, qrels):
     key_ls = list(corpus.keys())
@@ -203,7 +210,7 @@ def reformat_patch_embeddings_txt(patch_emb_ls, img_emb):
     return patch_emb_curr_img_ls
 
 
-def read_queries_with_sub_queries_file(filename):
+def read_queries_with_sub_queries_file(filename, subset_img_id=None):
     with open(filename, 'r') as json_file:
         json_list = list(json_file)
 
@@ -212,18 +219,30 @@ def read_queries_with_sub_queries_file(filename):
     sub_queries_ls= dict()
     # idx = 1
     rid = 1
+    rid_ls = []
     idx_to_rid = dict()
+    group_q_ls = dict()
     for json_str in json_list:
         result = json.loads(json_str)
         if "sub_text" in result:
             idx = result["_id"]
             queries[str(rid)] = result["text"]
             sub_queries_ls[str(rid)] = result["sub_text"]
+            grouped_sub_q_ids_ls = None
+            if "group" in result:
+                group_q_ls_str = result["group"]
+                grouped_sub_q_ids_ls = decompose_single_query_parition_groups(result["sub_text"], group_q_ls_str)
+            group_q_ls[str(rid)] = grouped_sub_q_ids_ls
             idx_to_rid[str(rid)] = str(idx)
         # idx += 1
+            rid_ls.append(str(rid))
             rid += 1
-        
-    return queries, sub_queries_ls, idx_to_rid
+    
+    if subset_img_id is None:
+        return queries, sub_queries_ls, idx_to_rid
+    else:
+        key = rid_ls[subset_img_id]
+        return {"1": queries[key]}, {"1":sub_queries_ls[key]}, {"1":idx_to_rid[key]}
 
 def check_empty_mappings(curr_gt):
     value_ls = set(list(curr_gt.values()))

@@ -29,7 +29,7 @@ def draw_bbox_on_single_image(img_file_name, bbox_ls):
 
 class DenseRetrievalExactSearch:
     
-    def __init__(self, model, batch_size: int = 128, corpus_chunk_size: int = 50000, algebra_method="one", is_img_retrieval=False, **kwargs):
+    def __init__(self, model, batch_size: int = 128, corpus_chunk_size: int = 50000, algebra_method="one", is_img_retrieval=False, prob_agg="prod", dependency_topk=20, **kwargs):
         #model is class that provides encode_corpus() and encode_queries()
         self.model = model
         self.batch_size = batch_size
@@ -41,6 +41,68 @@ class DenseRetrievalExactSearch:
         self.algebra_method = algebra_method
         self.results = {}
         self.is_img_retrieval = is_img_retrieval
+        self.prob_agg = prob_agg
+        self.dependency_topk=dependency_topk
+        
+    def compute_dependency_aware_sim_score(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr):
+        if grouped_sub_q_ids_ls[query_itr] is not None:
+            curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_q_ls_idx]
+        else:
+            curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
+        
+        if self.prob_agg == "prod":
+            curr_scores_ls= 1
+        else:
+            curr_scores_ls = 0
+        # curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
+        if self.is_img_retrieval:
+            curr_sub_corpus_embeddings = sub_corpus_embeddings[0:-1]
+        else:
+            curr_sub_corpus_embeddings = sub_corpus_embeddings
+        for curr_grouped_sub_q_ids in curr_grouped_sub_q_ids_ls:
+            
+            selected_embedding_idx = torch.arange(curr_sub_corpus_embeddings.shape[0])
+            beam_search_topk=min(self.dependency_topk, curr_sub_corpus_embeddings.shape[0])
+            sub_curr_scores = torch.zeros(1).to(device)
+            selected_patch_ids_ls = None
+            for sub_query_idx in range(len(curr_grouped_sub_q_ids)): #range(curr_query_embedding.shape[0]):
+                # print(curr_grouped_sub_q_ids, sub_query_idx)
+                if self.prob_agg == "prod":
+                    prod_mat = self.score_functions[score_function](curr_query_embedding[curr_grouped_sub_q_ids[sub_query_idx]].to(device), curr_sub_corpus_embeddings[selected_embedding_idx].to(device)).view(-1,1)*sub_curr_scores.view(1,-1)
+                else:
+                    prod_mat = self.score_functions[score_function](curr_query_embedding[curr_grouped_sub_q_ids[sub_query_idx]].to(device), curr_sub_corpus_embeddings[selected_embedding_idx].to(device)).view(-1,1)+sub_curr_scores.view(1,-1)
+
+                # beam_search_topk=max(20, int(torch.numel(prod_mat)*0.05) + 1)
+                # print("beam_search_topk::", beam_search_topk)
+                sub_curr_scores_ls, topk_ids = torch.topk(prod_mat.view(-1), k=beam_search_topk, dim=-1)
+                topk_emb_ids = topk_ids // prod_mat.shape[1]
+                
+                topk_emb_ids = selected_embedding_idx.to(device)[topk_emb_ids].tolist()
+                # topk_emb_ids = list(set(topk_emb_ids.tolist()))
+                if sub_query_idx == 0:
+                    selected_patch_ids_ls = [[emb_id] for emb_id in topk_emb_ids]
+                    # selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in topk_emb_ids])
+                else:
+                    selected_seq_ids = topk_ids%prod_mat.shape[1]
+                    curr_selected_patch_ids_ls = [selected_patch_ids_ls[selected_seq_ids[selected_seq_id_idx]]+ [topk_emb_ids[selected_seq_id_idx]] for selected_seq_id_idx in range(len(selected_seq_ids))]
+                    selected_patch_ids_ls = curr_selected_patch_ids_ls
+                    # curr_selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in topk_emb_ids])
+                    # selected_embedding_idx = torch.tensor(list(set(torch.cat([selected_embedding_idx, curr_selected_embedding_idx]).tolist())))
+                existing_topk_emb_ids = set()
+                for selected_patch_ids in selected_patch_ids_ls:
+                    existing_topk_emb_ids.update(selected_patch_ids)
+                # selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in existing_topk_emb_ids])
+                selected_embedding_idx = set()
+                for topk_id in existing_topk_emb_ids:
+                    selected_embedding_idx.update(bboxes_overlap_ls[corpus_idx][topk_id])
+                selected_embedding_idx = torch.tensor(list(selected_embedding_idx))
+                sub_curr_scores = sub_curr_scores_ls
+            if self.prob_agg == "prod":
+                curr_scores_ls *= torch.max(sub_curr_scores)
+            else:
+                curr_scores_ls += torch.max(sub_curr_scores)
+                
+        return curr_scores_ls
 
     def search(self, 
                corpus: Dict[str, Dict[str, str]], 
@@ -168,51 +230,9 @@ class DenseRetrievalExactSearch:
                             elif self.algebra_method == two:
                                 curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
                                 
-                                curr_scores_ls_max_id = torch.argmax(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
+                                # curr_scores_ls_max_id = torch.argmax(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
                             else:
-                                if grouped_sub_q_ids_ls[query_itr] is not None:
-                                    curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_q_ls_idx]
-                                else:
-                                    curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
-                                
-                                curr_scores_ls= 1
-                                # curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
-                                curr_sub_corpus_embeddings = sub_corpus_embeddings[0:-1]
-                                for curr_grouped_sub_q_ids in curr_grouped_sub_q_ids_ls:
-                                    
-                                    selected_embedding_idx = torch.arange(curr_sub_corpus_embeddings.shape[0])
-                                    beam_search_topk=min(20, curr_sub_corpus_embeddings.shape[0])
-                                    sub_curr_scores = torch.ones(1).to(device)
-                                    selected_patch_ids_ls = None
-                                    for sub_query_idx in range(len(curr_grouped_sub_q_ids)): #range(curr_query_embedding.shape[0]):
-                                        # print(curr_grouped_sub_q_ids, sub_query_idx)
-                                        prod_mat = self.score_functions[score_function](curr_query_embedding[curr_grouped_sub_q_ids[sub_query_idx]].to(device), curr_sub_corpus_embeddings[selected_embedding_idx].to(device)).view(-1,1)*sub_curr_scores.view(1,-1)
-                                        # beam_search_topk=max(20, int(torch.numel(prod_mat)*0.05) + 1)
-                                        # print("beam_search_topk::", beam_search_topk)
-                                        sub_curr_scores_ls, topk_ids = torch.topk(prod_mat.view(-1), k=beam_search_topk, dim=-1)
-                                        topk_emb_ids = topk_ids // prod_mat.shape[1]
-                                        
-                                        topk_emb_ids = selected_embedding_idx.to(device)[topk_emb_ids].tolist()
-                                        # topk_emb_ids = list(set(topk_emb_ids.tolist()))
-                                        if sub_query_idx == 0:
-                                            selected_patch_ids_ls = [[emb_id] for emb_id in topk_emb_ids]
-                                            # selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in topk_emb_ids])
-                                        else:
-                                            selected_seq_ids = topk_ids%prod_mat.shape[1]
-                                            curr_selected_patch_ids_ls = [selected_patch_ids_ls[selected_seq_ids[selected_seq_id_idx]]+ [topk_emb_ids[selected_seq_id_idx]] for selected_seq_id_idx in range(len(selected_seq_ids))]
-                                            selected_patch_ids_ls = curr_selected_patch_ids_ls
-                                            # curr_selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in topk_emb_ids])
-                                            # selected_embedding_idx = torch.tensor(list(set(torch.cat([selected_embedding_idx, curr_selected_embedding_idx]).tolist())))
-                                        existing_topk_emb_ids = set()
-                                        for selected_patch_ids in selected_patch_ids_ls:
-                                            existing_topk_emb_ids.update(selected_patch_ids)
-                                        # selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in existing_topk_emb_ids])
-                                        selected_embedding_idx = set()
-                                        for topk_id in existing_topk_emb_ids:
-                                            selected_embedding_idx.update(bboxes_overlap_ls[corpus_idx][topk_id])
-                                        selected_embedding_idx = torch.tensor(list(selected_embedding_idx))
-                                        sub_curr_scores = sub_curr_scores_ls
-                                    curr_scores_ls *= torch.max(sub_curr_scores)
+                                curr_scores_ls = self.compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr)
                                 # curr_scores_ls2 = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
                                 
                         else:    
@@ -237,8 +257,10 @@ class DenseRetrievalExactSearch:
                             
                             # curr_scores_ls[curr_scores_ls2 - whole_img_sim > 0.2] = whole_img_sim[curr_scores_ls2 - whole_img_sim > 0.2]
                             # curr_scores_ls[whole_img_sim - curr_scores_ls2 > 0.2] = curr_scores_ls2[whole_img_sim - curr_scores_ls2 > 0.2]
-                            
-                            curr_scores = torch.prod(curr_scores_ls)
+                            if self.prob_agg == "prod":
+                                curr_scores = torch.prod(curr_scores_ls)
+                            else:
+                                curr_scores = torch.sum(curr_scores_ls)
                             # curr_scores = torch.sum(curr_scores_ls)
                             # curr_scores = torch.sum(curr_scores_ls)
                             full_curr_scores_ls.append(curr_scores.item())
@@ -289,6 +311,7 @@ class DenseRetrievalExactSearch:
                score_function: str,
                return_sorted: bool = False, 
                query_negations: List=None, all_sub_corpus_embedding_ls=None, query_embeddings=None, query_count=10, device = 'cuda', clustering_info=None, topk_embs = 500,
+               bboxes_overlap_ls=None,grouped_sub_q_ids_ls=None,
                **kwargs) -> Dict[str, Dict[str, float]]:
         #Create embeddings for all queries using model.encode_queries()
         #Runs semantic search against the corpus embeddings
@@ -451,7 +474,7 @@ class DenseRetrievalExactSearch:
                             
                         
                         
-                    else:   
+                    elif self.algebra_method == two or self.algebra_method == four:   
                         sorted_scores, sorted_indices = torch.sort(curr_scores_mat, dim=-1, descending=True)
                         # local_sim_array = torch.ones(len(all_sub_corpus_embedding_ls), device=device)
                         # local_visited_times_tensor = torch.zeros([len(all_sub_corpus_embedding_ls), sorted_scores.shape[0]], device=device)
@@ -495,6 +518,7 @@ class DenseRetrievalExactSearch:
                                 break
                             
                         # merged_sample_to_cluster_idx_mappings = dict()
+                        
                         merged_sample_to_cat_patch_idx_mappings = dict()
                         for sample_id in common_sample_ids:
                             for sub_q_idx in range(len(sample_to_cat_patch_idx_ls)):
@@ -504,30 +528,65 @@ class DenseRetrievalExactSearch:
                                 else:
                                     # merged_sample_to_cluster_idx_mappings[sample_id] = merged_sample_to_cluster_idx_mappings[sample_id].union(set(sample_to_cluster_idx_ls[sub_q_idx][sample_id]))
                                     merged_sample_to_cat_patch_idx_mappings[sample_id] = merged_sample_to_cat_patch_idx_mappings[sample_id].union(set(sample_to_cat_patch_idx_ls[sub_q_idx][sample_id]))
-                        
-                        for sample_id in common_sample_ids:
-                            # sample_id = int(sample_id)
-                            # curr_sample_sub_x = []
-                            # for cluster_idx in merged_sample_to_cluster_idx_mappings[sample_id]:
-                            #     curr_sample_sub_x.append(cluster_sub_X_ls[cluster_idx][sample_id])
-                            
-                            patch_ids = torch.tensor(list(merged_sample_to_cat_patch_idx_mappings[sample_id]))
-                            curr_sample_sub_X_tensor = all_sub_corpus_embedding_ls[sample_id][patch_ids].to(device)
-                            
-                            # curr_sample_sub_X_tensor2 = torch.cat(curr_sample_sub_x).to(device)
-                            cos_scores = torch.prod(torch.max(self.score_functions[score_function](curr_sample_sub_X_tensor, curr_query_embedding.to(device)), dim=0)[0])
-                            all_cos_scores_tensor[sample_id, sub_query_itr, query_itr] = cos_scores
-                            
-                            # for sample_id in common_sample_ids:
-                            #     # for sub_q_idx in range(sample_to_sub_X_mappings_ls):
-                            #         cos_scores = torch.prod(torch.max(self.score_functions(torch.cat(sample_to_cluster_idx_ls[0][sample_id]), curr_query_embedding.to(device)), dim=0))
-                            #         all_cos_scores_tensor[sample_id, sub_q_idx, query_itr] = cos_scores
+                        if self.algebra_method == two:    
+                            for sample_id in common_sample_ids:
+                                # sample_id = int(sample_id)
+                                # curr_sample_sub_x = []
+                                # for cluster_idx in merged_sample_to_cluster_idx_mappings[sample_id]:
+                                #     curr_sample_sub_x.append(cluster_sub_X_ls[cluster_idx][sample_id])
                                 
+                                patch_ids = torch.tensor(list(merged_sample_to_cat_patch_idx_mappings[sample_id]))
+                                curr_sample_sub_X_tensor = all_sub_corpus_embedding_ls[sample_id][patch_ids].to(device)
+                                
+                                # curr_sample_sub_X_tensor2 = torch.cat(curr_sample_sub_x).to(device)
+                                if self.prob_agg == "prod":
+                                    # cos_scores = torch.prod(self.score_functions[score_function](curr_sample_sub_X_tensor, curr_query_embedding.to(device)), dim=0)
+                                    cos_scores = torch.prod(torch.max(self.score_functions[score_function](curr_sample_sub_X_tensor, curr_query_embedding.to(device)), dim=0)[0])
+                                else:
+                                    cos_scores = torch.sum(torch.max(self.score_functions[score_function](curr_sample_sub_X_tensor, curr_query_embedding.to(device)), dim=0)[0])
+                                all_cos_scores_tensor[sample_id, sub_query_itr, query_itr] = cos_scores
+                        else:
+                            # for sub_q_ls_idx in range(len(curr_query_embedding)):
+                            # if grouped_sub_q_ids_ls[query_itr] is not None:
+                            #     curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_query_itr]
+                            # else:
+                            #     curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
+                            
+                            for sample_id in common_sample_ids:
+                                # patch_ids = torch.tensor(list(merged_sample_to_cat_patch_idx_mappings[sample_id]))
+                                cos_scores = self.compute_dependency_aware_sim_score(curr_query_embedding, all_sub_corpus_embedding_ls, sample_id, score_function, grouped_sub_q_ids_ls, sub_query_itr, device, bboxes_overlap_ls, query_itr)
+                                all_cos_scores_tensor[sample_id, sub_query_itr, query_itr] = cos_scores
+                            
+                            
+                            # for curr_grouped_sub_q_ids in curr_grouped_sub_q_ids_ls:
+                                
+                                
+                                # for sample_id in common_sample_ids:
+                                #     # for sub_q_idx in range(sample_to_sub_X_mappings_ls):
+                                #         cos_scores = torch.prod(torch.max(self.score_functions(torch.cat(sample_to_cluster_idx_ls[0][sample_id]), curr_query_embedding.to(device)), dim=0))
+                                #         all_cos_scores_tensor[sample_id, sub_q_idx, query_itr] = cos_scores
+                    else:
+                        common_sample_ids = set()
+                        for sub_q_idx in range(len(curr_query_embedding)):
+                            sub_curr_scores_mat = curr_scores_mat[sub_q_idx].view(-1)
+                            sub_sorted_scores, sub_sorted_indices = torch.sort(sub_curr_scores_mat, descending=True)
+                            for cluster_id in range(sub_sorted_indices.shape[1]):
+                                
+                                # for sub_q_idx in range(curr_query_embedding.shape[0]):
+                                curr_cluster_idx = sub_sorted_indices[cluster_id].item()
+                                curr_cat_patch_ids_mappings = cluster_sub_X_cat_patch_ids_ls[curr_cluster_idx]
+                                
+                                for sample_id in curr_cat_patch_ids_mappings:
+                                    if sample_id not in sample_to_cat_patch_idx_ls[sub_q_idx]:
+                                        # sample_to_cluster_idx_ls[sub_q_idx][sample_id] = []
+                                        sample_to_cat_patch_idx_ls[sub_q_idx][sample_id] = []# sample_to_sub_X_mappings_ls[sub_q_idx][sample_id].append(curr_sample_idx_sub_X_mappings[sample_id])
+                                    # sample_to_cluster_idx_ls[sub_q_idx][sample_id].append(curr_cluster_idx)
+                                    sample_to_cat_patch_idx_ls[sub_q_idx][sample_id].extend(curr_cat_patch_ids_mappings[sample_id])
                         # all_cos_scores_tensor[torch.sum(local_visited_times_tensor, dim=-1) >= len(curr_scores), sub_query_itr, query_itr] = local_sim_array
 
         all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=0, keepdim=True)
-        all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
-        # all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+        # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
+        all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
         #Get top-k values
         all_cos_scores_tensor = all_cos_scores_tensor.t()
         cos_scores_top_k_values, cos_scores_top_k_idx = torch.topk(all_cos_scores_tensor, min(top_k+1, len(all_cos_scores_tensor[0])), dim=1, largest=True)#, sorted=return_sorted)
