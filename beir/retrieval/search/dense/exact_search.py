@@ -158,9 +158,9 @@ class DenseRetrievalExactSearch:
                         curr_scores = 1
                         
                         if len(sub_corpus_embeddings.shape) == 2 and sub_corpus_embeddings.shape[0] > 1:
-                            # if curr_query_embedding.shape[0] == 1:
-                            #     curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
-                            # else:
+                            if curr_query_embedding.shape[0] == 1:
+                                curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
+                            else:
                                 # curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
                                 if self.algebra_method == one or self.algebra_method == three:
                                     curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
@@ -180,7 +180,7 @@ class DenseRetrievalExactSearch:
                                     for curr_grouped_sub_q_ids in curr_grouped_sub_q_ids_ls:
                                     
                                         selected_embedding_idx = torch.arange(sub_corpus_embeddings.shape[0])
-                                        beam_search_topk=min(5, sub_corpus_embeddings.shape[0])
+                                        beam_search_topk=min(20, sub_corpus_embeddings.shape[0])
                                         sub_curr_scores = torch.ones(1).to(device)
                                         for sub_query_idx in range(len(curr_grouped_sub_q_ids)): #range(curr_query_embedding.shape[0]):
                                             # print(curr_grouped_sub_q_ids, sub_query_idx)
