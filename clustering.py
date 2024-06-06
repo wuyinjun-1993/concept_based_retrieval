@@ -26,6 +26,7 @@ def online_clustering(X, closeness_threshold=0.1):
                 
                 centroid_sample_count = torch.sum(labels == max_sim_idx).item()
                 centroid_ls[max_sim_idx] = (centroid_ls[max_sim_idx]*centroid_sample_count +  X[idx])/(centroid_sample_count+1)
+                all_centroids[max_sim_idx] = centroid_ls[max_sim_idx]
                 labels[idx] = max_sim_idx
             else:
                 centroid_ls.append(X[idx])
