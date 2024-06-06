@@ -17,7 +17,7 @@ class EvaluateRetrieval:
         self.retriever = retriever
         self.score_function = score_function
             
-    def retrieve(self, corpus: Dict[str, Dict[str, str]], queries: Dict, query_negations:Dict=None, all_sub_corpus_embedding_ls=None,query_embeddings=None, query_count=10, parallel=False, in_disk=False, store_path=None, use_clustering=False, **kwargs) -> Dict[str, Dict[str, float]]:
+    def retrieve(self, corpus: Dict[str, Dict[str, str]], queries: Dict, query_negations:Dict=None, all_sub_corpus_embedding_ls=None,query_embeddings=None, query_count=10, parallel=False, in_disk=False, store_path=None, use_clustering=False,clustering_topk=500, **kwargs) -> Dict[str, Dict[str, float]]:
         if not self.retriever:
             raise ValueError("Model/Technique has not been provided!")
         if not parallel:
@@ -25,7 +25,7 @@ class EvaluateRetrieval:
                 if not use_clustering:
                     return self.retriever.search(corpus, queries, self.top_k, self.score_function, query_negations=query_negations, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_embeddings=query_embeddings, query_count=query_count,**kwargs)
                 else:
-                    return self.retriever.search_by_clusters(corpus, queries, self.top_k, self.score_function, query_negations=query_negations, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_embeddings=query_embeddings, query_count=query_count,**kwargs)
+                    return self.retriever.search_by_clusters(corpus, queries, self.top_k, self.score_function, query_negations=query_negations, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_embeddings=query_embeddings, query_count=query_count, topk_embs=clustering_topk, **kwargs)
             else:
                 assert store_path is not None
                 return self.retriever.search_in_disk(corpus, store_path, queries, self.top_k, self.score_function, query_negations=query_negations, all_sub_corpus_embedding_ls=None, query_embeddings=query_embeddings, query_count=query_count,**kwargs)

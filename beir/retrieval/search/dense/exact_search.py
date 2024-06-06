@@ -556,8 +556,13 @@ class DenseRetrievalExactSearch:
                             #     curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
                             
                             for sample_id in common_sample_ids:
+                                if curr_query_embedding.shape[0] == 1 and self.is_img_retrieval:
+                                    curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), all_sub_corpus_embedding_ls[sample_id][-1].to(device))
+                                    curr_scores = curr_scores_ls
+                                    all_cos_scores_tensor[sample_id, sub_query_itr, query_itr] = cos_scores
+                                    continue
                                 # patch_ids = torch.tensor(list(merged_sample_to_cat_patch_idx_mappings[sample_id]))
-                                cos_scores = self.compute_dependency_aware_sim_score(curr_query_embedding, all_sub_corpus_embedding_ls, sample_id, score_function, grouped_sub_q_ids_ls, sub_query_itr, device, bboxes_overlap_ls, query_itr)
+                                cos_scores = self.compute_dependency_aware_sim_score(curr_query_embedding, all_sub_corpus_embedding_ls[sample_id], sample_id, score_function, grouped_sub_q_ids_ls, sub_query_itr, device, bboxes_overlap_ls, query_itr)
                                 all_cos_scores_tensor[sample_id, sub_query_itr, query_itr] = cos_scores
                             
                             
