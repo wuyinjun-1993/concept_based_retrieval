@@ -264,8 +264,8 @@ class DenseRetrievalExactSearch:
         
         all_cos_scores_tensor = torch.stack(all_cos_scores, dim=-1)
         all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
-        all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
-        # all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+        # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
+        all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
         #Get top-k values
         cos_scores_top_k_values, cos_scores_top_k_idx = torch.topk(all_cos_scores_tensor, min(top_k+1, len(all_cos_scores_tensor[0])), dim=1, largest=True)#, sorted=return_sorted)
         cos_scores_top_k_values = cos_scores_top_k_values.cpu().tolist()
