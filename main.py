@@ -249,7 +249,12 @@ if __name__ == "__main__":
         #     patch_count_ls = [4, 8, 16, 32, 64, 128]
         # else:
             # patch_count_ls = [4, 8, 16, 32, 64, 128]
-            patch_count_ls = [4, 8, 16, 64]
+            if args.dataset_name.startswith("crepe"):
+                patch_count_ls = [4, 8, 16, 64]
+            elif args.dataset_name.startswith("mscoco"):
+                patch_count_ls = [4, 8, 16, 64, 128]
+            else:
+                patch_count_ls = [4, 8, 16, 64]
     else:
         # patch_count_ls = [8, 24, 32]
         patch_count_ls = [1, 16, 8, 4, 32]
@@ -335,7 +340,7 @@ if __name__ == "__main__":
             qrels = construct_qrels(queries, cached_img_ls, img_idx_ls, query_count=args.query_count)
     
     # if args.is_img_retrieval:
-    retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=args.algebra_method)
+    retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=args.is_img_retrieval)
     # else:
     #     retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=one)
     retriever = EvaluateRetrieval(retrieval_model, score_function="cos_sim") # or "cos_sim" for cosine similarity

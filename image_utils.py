@@ -1324,7 +1324,8 @@ def determine_overlapped_bboxes(bboxes_ls):
     
     for b_idx in range(len(bboxes_ls)):
         bboxes = bboxes_ls[b_idx]
-        curr_nb_ls = [[] for _ in range(len(bboxes) + 1)]
+        # curr_nb_ls = [[] for _ in range(len(bboxes) + 1)]
+        curr_nb_ls = [[] for _ in range(len(bboxes))]
         for idx in range(len(bboxes)):
             bbox = bboxes[idx]
             
@@ -1335,9 +1336,35 @@ def determine_overlapped_bboxes(bboxes_ls):
                         curr_nb_ls[idx].append(sub_idx)
                 else:
                     curr_nb_ls[idx].append(sub_idx)
-            curr_nb_ls[idx].append(len(bboxes))
+            # curr_nb_ls[idx].append(len(bboxes))
         
-        curr_nb_ls[len(bboxes)].append(list(range(len(bboxes) + 1)))
+        # curr_nb_ls[len(bboxes)].extend(list(range(len(bboxes) + 1)))
         bbox_nb_ls.append(curr_nb_ls)
     
     return bbox_nb_ls
+
+
+# def determine_overlapped_bboxes(bboxes_ls):
+    
+#     bbox_nb_ls = []
+    
+#     for b_idx in range(len(bboxes_ls)):
+#         bboxes = bboxes_ls[b_idx]
+#         curr_nb_ls = [[] for _ in range(len(bboxes) + 1)]
+#         # curr_nb_ls = [[] for _ in range(len(bboxes))]
+#         for idx in range(len(bboxes)):
+#             bbox = bboxes[idx]
+            
+#             for sub_idx in range(len(bboxes)):
+#                 if idx != sub_idx:
+#                     sub_bbox = bboxes[sub_idx]
+#                     if is_bbox_overlapped(bbox, sub_bbox):
+#                         curr_nb_ls[idx].append(sub_idx)
+#                 else:
+#                     curr_nb_ls[idx].append(sub_idx)
+#             curr_nb_ls[idx].append(len(bboxes))
+        
+#         curr_nb_ls[len(bboxes)].extend(list(range(len(bboxes) + 1)))
+#         bbox_nb_ls.append(curr_nb_ls)
+    
+#     return bbox_nb_ls
