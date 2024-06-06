@@ -42,7 +42,8 @@ class ConceptLearner_text:
         
         
         for idx in range(len(corpus_content_split)):
-            sentence_ls.append(" ".join(corpus_content_split[idx:min(idx+patch_count, len(corpus_content_split))]))
+            end_idx = min(idx+patch_count, len(corpus_content_split))
+            sentence_ls.append(" ".join(corpus_content_split[idx:end_idx]))
             if idx+patch_count >= len(corpus_content_split):
                 break
         
