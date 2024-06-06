@@ -63,7 +63,10 @@ class DenseRetrievalExactSearch:
             
             selected_embedding_idx = torch.arange(curr_sub_corpus_embeddings.shape[0])
             beam_search_topk=min(self.dependency_topk, curr_sub_corpus_embeddings.shape[0])
-            sub_curr_scores = torch.zeros(1).to(device)
+            if self.prob_agg == "prod":
+                sub_curr_scores = torch.ones(1).to(device)
+            else:
+                sub_curr_scores = torch.zeros(1).to(device)
             selected_patch_ids_ls = None
             for sub_query_idx in range(len(curr_grouped_sub_q_ids)): #range(curr_query_embedding.shape[0]):
                 # print(curr_grouped_sub_q_ids, sub_query_idx)
