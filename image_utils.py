@@ -1271,19 +1271,23 @@ def convert_samples_to_concepts_img(args, samples_hash, model, img_file_name_ls,
 
 
 def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb, bbox_ls=None):
-    img_per_patch_tensor = torch.tensor(img_per_patch_ls[0])
-    max_img_id = int(torch.max(img_per_patch_tensor).item())
+    # img_per_patch_tensor = torch.tensor(img_per_patch_ls[0])
+    # max_img_id = int(torch.max(img_per_patch_tensor).item())
+    max_img_id = len(img_emb)
     patch_emb_curr_img_ls = []
     transformed_bbox_ls = []
-    for idx in tqdm(range(max_img_id + 1)):
+    for idx in tqdm(range(max_img_id)):
         sub_patch_emb_curr_img_ls = []
         sub_transformed_bbox_ls = []
         for sub_idx in range(len(patch_emb_ls)):
             patch_emb = patch_emb_ls[sub_idx]
-            # img_per_batch = img_per_patch_ls[sub_idx]
-            # img_per_patch_tensor = torch.tensor(img_per_batch)
-            # curr_selected_ids = torch.nonzero(img_per_patch_tensor == idx).view(-1)
-            patch_emb_curr_img = patch_emb[idx] #[curr_selected_ids]
+            if img_per_patch_ls is not None:
+                img_per_batch = img_per_patch_ls[sub_idx]
+                img_per_patch_tensor = torch.tensor(img_per_batch)
+                curr_selected_ids = torch.nonzero(img_per_patch_tensor == idx).view(-1)
+                patch_emb_curr_img = patch_emb[curr_selected_ids]
+            else:
+                patch_emb_curr_img = patch_emb[idx] #[curr_selected_ids]
             
             # curr_selected_ids = torch.nonzero(img_per_patch_tensor == idx).view(-1)
             # patch_emb_curr_img = patch_emb[curr_selected_ids]

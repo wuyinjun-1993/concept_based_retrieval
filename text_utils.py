@@ -17,18 +17,28 @@ class ConceptLearner_text:
         # self.input_processor = input_processor
         self.dataset_name = dataset_name
         self.model = model
+        self.split_corpus_ls =[]
 
     def get_corpus_embeddings(self):
         return self.model.encode_corpus(self.corpus)
 
     
-    def split_and_encoding_single_corpus(self, corpus, patch_count=4):
+    def split_corpus(self):
+        for corpus in self.corpus:
+            corpus_content = corpus["text"]
+            corpus_content_split = re.split(r"[.|\?|\!]", corpus_content)
+            corpus_content_split = [x.strip() for x in corpus_content_split if len(x) > 0]
+            corpus_content_split = [corpus["title"]] + corpus_content_split
+            self.split_corpus_ls.append(corpus_content_split)
+    
+    
+    def split_and_encoding_single_corpus(self, corpus_idx, patch_count=4):
         sentence_ls = []
         # parser = re.compile(r"[.|\?|\!]")
-        corpus_content = corpus["text"]
-        corpus_content_split = re.split(r"[.|\?|\!]", corpus_content)
-        corpus_content_split = [x.strip() for x in corpus_content_split if len(x) > 0]
-        corpus_content_split = [corpus["title"]] + corpus_content_split
+        # corpus_content = corpus["text"]
+        # corpus_content_split = re.split(r"[.|\?|\!]", corpus_content)
+        # corpus_content_split = [x.strip() for x in corpus_content_split if len(x) > 0]
+        corpus_content_split = self.split_corpus_ls[corpus_idx] # [corpus["title"]] + corpus_content_split
         
         
         for idx in range(len(corpus_content_split)):
@@ -62,10 +72,13 @@ class ConceptLearner_text:
         # if compute_img_emb:
         #     image_embs = self.get_corpus_embeddings()
         
+        if len(self.split_corpus_ls) == 0:
+            self.split_corpus()
+        
         patch_activations = []
         
         for key in range(len(self.corpus)):
-            patch_activation = self.split_and_encoding_single_corpus(self.corpus[key], patch_count=patch_count)
+            patch_activation = self.split_and_encoding_single_corpus(key, patch_count=patch_count)
             # patch_activations[key] = torch.cat(patch_activation)
             patch_activations.append(patch_activation)
         
