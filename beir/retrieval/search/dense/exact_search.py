@@ -43,8 +43,65 @@ class DenseRetrievalExactSearch:
         self.is_img_retrieval = is_img_retrieval
         self.prob_agg = prob_agg
         self.dependency_topk=dependency_topk
+    
+    def check_nbs_info(self, curr_query_embedding, bboxes_overlap_ls, grouped_sub_q_ids, common_sample_ids, sample_to_cat_patch_idx_ls):
         
-    def compute_dependency_aware_sim_score(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr):
+        valid_sample_count = 0
+        
+        valid_samples_to_patch_ids_mappings = dict()
+        
+        for sample_id in common_sample_ids:
+            curr_bbox_overlaps = bboxes_overlap_ls[sample_id]
+            is_valid=True
+            curr_sample_all_overlapped_patch_ids = set()
+            # if grouped_sub_q_ids is None:
+            #     grouped_sub_q_ids = [list(range(curr_query_embedding.shape[0]))]
+            
+            
+            for sub_q_ids in grouped_sub_q_ids:
+                # for sub_q_ids in sub_q_ids_ls:
+                    local_q_count = 0
+                    overlapped_patch_ids = set()
+                    for q_id in sub_q_ids:
+                        
+                        patch_ids = sample_to_cat_patch_idx_ls[q_id][sample_id]
+                        
+                        if local_q_count == 0:
+                            overlapped_patch_ids.update(patch_ids)
+                        else:
+                            remaining_patch_ids = []
+                            for patch_id in patch_ids:
+                                if self.is_img_retrieval and patch_id >= len(curr_bbox_overlaps):
+                                    continue
+                                    
+                                
+                                curr_bbox_overlap = curr_bbox_overlaps[patch_id]
+                                curr_overlapped_patch_ids = set(curr_bbox_overlap).intersection(set(overlapped_patch_ids))
+                                if len(curr_overlapped_patch_ids) > 0:
+                                    remaining_patch_ids.append(patch_id)
+                                    
+                            if len(remaining_patch_ids) <= 0:
+                                is_valid=False
+                                break      
+                            else:
+                                overlapped_patch_ids.update(remaining_patch_ids)                     
+                        
+                        local_q_count += 1
+                    if not is_valid:
+                        break
+                    else:
+                        curr_sample_all_overlapped_patch_ids.update(overlapped_patch_ids)
+                        
+                # if not is_valid:
+                #     break
+            if is_valid:
+                valid_samples_to_patch_ids_mappings[sample_id] = curr_sample_all_overlapped_patch_ids
+                valid_sample_count += 1
+            
+        return valid_sample_count, valid_samples_to_patch_ids_mappings
+    
+    
+    def compute_dependency_aware_sim_score(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, valid_patch_ids=None):
         if grouped_sub_q_ids_ls[query_itr] is not None:
             curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_q_ls_idx]
         else:
@@ -70,6 +127,10 @@ class DenseRetrievalExactSearch:
             selected_patch_ids_ls = None
             for sub_query_idx in range(len(curr_grouped_sub_q_ids)): #range(curr_query_embedding.shape[0]):
                 # print(curr_grouped_sub_q_ids, sub_query_idx)
+                if valid_patch_ids is not None:
+                    selected_embedding_idx = torch.tensor(list(set(selected_embedding_idx.tolist()).intersection(valid_patch_ids)))
+                
+                
                 if self.prob_agg == "prod":
                     prod_mat = self.score_functions[score_function](curr_query_embedding[curr_grouped_sub_q_ids[sub_query_idx]].to(device), curr_sub_corpus_embeddings[selected_embedding_idx].to(device)).view(-1,1)*sub_curr_scores.view(1,-1)
                 else:
@@ -77,7 +138,7 @@ class DenseRetrievalExactSearch:
 
                 # beam_search_topk=max(20, int(torch.numel(prod_mat)*0.05) + 1)
                 # print("beam_search_topk::", beam_search_topk)
-                sub_curr_scores_ls, topk_ids = torch.topk(prod_mat.view(-1), k=beam_search_topk, dim=-1)
+                sub_curr_scores_ls, topk_ids = torch.topk(prod_mat.view(-1), k=min(beam_search_topk, torch.numel(prod_mat)), dim=-1)
                 topk_emb_ids = topk_ids // prod_mat.shape[1]
                 
                 topk_emb_ids = selected_embedding_idx.to(device)[topk_emb_ids].tolist()
@@ -322,7 +383,7 @@ class DenseRetrievalExactSearch:
         
         
         assert clustering_info is not None
-        cluster_sub_X_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls = clustering_info
+        cluster_sub_X_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings = clustering_info
         
         if score_function not in self.score_functions:
             raise ValueError("score function: {} must be either (cos_sim) for cosine similarity or (dot) for dot product".format(score_function))
@@ -499,7 +560,9 @@ class DenseRetrievalExactSearch:
                         #     if torch.sum(torch.sum(local_visited_times_tensor, dim=-1) >= len(curr_scores)) >= topk_embs:
                         #         break
                         sample_to_cat_patch_idx_ls = [dict()]*curr_query_embedding.shape[0]
+                        full_sample_to_cluster_idx_mappings = dict()
                         # sample_to_cluster_idx_ls = [dict()]*curr_query_embedding.shape[0]
+                        # if self.algebra_method == two:
                         for cluster_id in range(sorted_indices.shape[1]):
                             common_sample_ids = set()
                             for sub_q_idx in range(curr_query_embedding.shape[0]):
@@ -517,8 +580,43 @@ class DenseRetrievalExactSearch:
                                     common_sample_ids = set(sample_to_cat_patch_idx_ls[sub_q_idx].keys())
                                 else:
                                     common_sample_ids = common_sample_ids.intersection(set(sample_to_cat_patch_idx_ls[sub_q_idx].keys()))
-                            if len(common_sample_ids) >= topk_embs:
+                                    
+                            if self.algebra_method == four and curr_query_embedding.shape[0] > 1:
+                                if grouped_sub_q_ids_ls[query_itr] is None:
+                                    curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
+                                else:
+                                    curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_query_itr]
+                                
+                                
+                                valid_count, valid_samples_to_patch_ids_mappings = self.check_nbs_info(curr_query_embedding, bboxes_overlap_ls, curr_grouped_sub_q_ids_ls, common_sample_ids, sample_to_cat_patch_idx_ls)
+                            else:
+                                valid_count = len(common_sample_ids)
+                            
+                            if valid_count >= topk_embs:
                                 break
+                        # else:
+                        #     common_sample_ids = set()
+                        #     for cluster_id in range(sorted_indices.shape[1]):
+                        #         for sub_q_g_idx_ls in range(len(grouped_sub_q_ids_ls)):
+                        #             for sub_q_idx_idx in range(len(sub_q_g_idx_ls)):
+                        #                 sub_q_idx = sub_q_g_idx_ls[sub_q_idx_idx]
+                        #                 if sub_q_idx_idx == 0:
+                        #                     curr_cluster_idx = sorted_indices[sub_q_idx,cluster_id].item()
+                        #                     curr_cat_patch_ids_mappings = cluster_sub_X_cat_patch_ids_ls[curr_cluster_idx]
+                        #                     # for sample_id in curr_cat_patch_ids_mappings:
+                        #                     #     if sample_id not in sample_to_cat_patch_idx_ls[sub_q_idx]:
+                        #                     #         # sample_to_cluster_idx_ls[sub_q_idx][sample_id] = []
+                        #                     #         sample_to_cat_patch_idx_ls[sub_q_idx][sample_id] = []# sample_to_sub_X_mappings_ls[sub_q_idx][sample_id].append(curr_sample_idx_sub_X_mappings[sample_id])
+                        #                     #     # sample_to_cluster_idx_ls[sub_q_idx][sample_id].append(curr_cluster_idx)
+                        #                     #     sample_to_cat_patch_idx_ls[sub_q_idx][sample_id].extend(curr_cat_patch_ids_mappings[sample_id])
+                        #                 else:
+                        #                     curr_cluster_idx = clustering_nbs_mappings[]
+                                            
+                                        
+                                            
+                                            
+                                            
+                                    # cluster_id_ls = sorted_indices[0:topk_embs]
                             
                         # merged_sample_to_cluster_idx_mappings = dict()
                         
@@ -561,8 +659,9 @@ class DenseRetrievalExactSearch:
                                     curr_scores = curr_scores_ls
                                     all_cos_scores_tensor[sample_id, sub_query_itr, query_itr] = cos_scores
                                     continue
+                                valid_patch_ids = valid_samples_to_patch_ids_mappings[sample_id]
                                 # patch_ids = torch.tensor(list(merged_sample_to_cat_patch_idx_mappings[sample_id]))
-                                cos_scores = self.compute_dependency_aware_sim_score(curr_query_embedding, all_sub_corpus_embedding_ls[sample_id], sample_id, score_function, grouped_sub_q_ids_ls, sub_query_itr, device, bboxes_overlap_ls, query_itr)
+                                cos_scores = self.compute_dependency_aware_sim_score(curr_query_embedding, all_sub_corpus_embedding_ls[sample_id], sample_id, score_function, grouped_sub_q_ids_ls, sub_query_itr, device, bboxes_overlap_ls, query_itr, valid_patch_ids=valid_patch_ids)
                                 all_cos_scores_tensor[sample_id, sub_query_itr, query_itr] = cos_scores
                             
                             

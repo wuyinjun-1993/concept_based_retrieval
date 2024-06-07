@@ -162,12 +162,15 @@ def construct_sample_patch_ids_ls(all_bboxes_ls):
         
     return sample_sub_ids_ls, sample_granularity_ids_ls
 
-def get_clustering_res_file_name(args, patch_count_ls):
+def get_patch_count_str(patch_count_ls):
     patch_count_ls = sorted(patch_count_ls)
     patch_count_str = "_".join([str(patch_count) for patch_count in patch_count_ls])
+    return patch_count_str
+
+def get_clustering_res_file_name(args, patch_count_ls):
+    patch_count_str = get_patch_count_str(patch_count_ls)
     patch_clustering_info_cached_file =  f"output/saved_patches_{args.dataset_name}_{patch_count_str}.pkl"
     return patch_clustering_info_cached_file
-    
 # 0.12 for trec covid 10000
 # 0.2
 def clustering_img_patch_embeddings(X_by_img_ls, dataset_name, X_ls, closeness_threshold = 0.1):
@@ -227,6 +230,7 @@ def clustering_img_patch_embeddings(X_by_img_ls, dataset_name, X_ls, closeness_t
     cluster_sub_X_patch_ids_ls=[]
     cluster_sub_X_cat_patch_ids_ls = []
     cluster_sub_X_granularity_ids_ls = []
+    sample_patch_ids_to_cluster_id_mappings = dict()
     for label in tqdm(np.unique(clustering_labels)):
         sub_X = X[clustering_labels == label]      
         sub_cat_patch_ids = sample_cat_patch_id_ls[clustering_labels == label]
@@ -270,9 +274,16 @@ def clustering_img_patch_embeddings(X_by_img_ls, dataset_name, X_ls, closeness_t
         cluster_sub_X_granularity_ids_ls.append(most_similar_granularity_ids_ls)
         cluster_sub_X_cat_patch_ids_ls.append(most_similar_cat_patch_ids_ls)
         
+        # construct sample patch idx to cluster label mappings
+        for sample_idx in most_similar_cat_patch_ids_ls:
+            if not sample_idx in sample_patch_ids_to_cluster_id_mappings:
+                sample_patch_ids_to_cluster_id_mappings[sample_idx] = dict()
+            for patch_idx in most_similar_cat_patch_ids_ls[sample_idx]:
+                sample_patch_ids_to_cluster_id_mappings[sample_idx][patch_idx] = int(label)
+        
     cluster_centroid_tensor = torch.cat(cluster_centroid_ls, dim=0)
     
-    return cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls
+    return cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls, sample_patch_ids_to_cluster_id_mappings
 
 
 def clustering_img_embeddings(X_embeddings):
