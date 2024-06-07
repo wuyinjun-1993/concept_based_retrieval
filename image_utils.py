@@ -1292,7 +1292,7 @@ def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb, bbox_ls=N
             # curr_selected_ids = torch.nonzero(img_per_patch_tensor == idx).view(-1)
             # patch_emb_curr_img = patch_emb[curr_selected_ids]
             sub_patch_emb_curr_img_ls.append(patch_emb_curr_img)
-            if bbox_ls is not None:
+            if bbox_ls is not None and bbox_ls[sub_idx] is not None:
                 sub_transformed_bbox_ls.extend(bbox_ls[sub_idx][idx])
         sub_patch_emb_curr_img_ls.append(img_emb[idx].unsqueeze(0))
         patch_emb_curr_img = torch.cat(sub_patch_emb_curr_img_ls, dim=0)
