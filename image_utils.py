@@ -89,7 +89,7 @@ def load_atom_datasets(data_path):
     
     # selected_dataset = filter_atom_images_by_langs(dataset) 
 
-def load_flickr_dataset(data_path, query_path):
+def load_flickr_dataset(data_path, query_path, subset_img_id=None):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
     # img_caption_file_name= os.path.join(query_path, "sub_queries.csv")
@@ -106,6 +106,8 @@ def load_flickr_dataset(data_path, query_path):
     caption_ls = []
     sub_caption_ls = []
     img_file_name_ls = []
+    all_grouped_sub_q_ids_ls = []
+
     for idx in tqdm(range(len(caption_pd))):
         image_idx = caption_pd.iloc[idx]['image_id']
         if image_idx in img_idx_ls:
@@ -123,15 +125,24 @@ def load_flickr_dataset(data_path, query_path):
         caption = caption_pd.iloc[idx]['caption']
         # sub_caption_str = caption_pd.iloc[idx]['caption_triples']
         sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
-        
         # sub_captions = decompose_single_query(sub_caption_str)
         sub_captions = decompose_single_query_ls(sub_caption_str)
+        query_paritions_str = caption_pd.iloc[idx]['groups']
+        grouped_sub_q_ids_ls = decompose_single_query_parition_groups(sub_captions, query_paritions_str)
         print(sub_captions)
         # img_ls.append(img)
         img_idx_ls.append(image_idx)
         caption_ls.append(caption)
         sub_caption_ls.append(sub_captions)
-    return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls
+        all_grouped_sub_q_ids_ls.append(grouped_sub_q_ids_ls)
+        
+    if subset_img_id is None:
+        return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
+    else:
+        print(sub_caption_ls[subset_img_id])
+        return [caption_ls[subset_img_id]], [img_file_name_ls[subset_img_id]], [sub_caption_ls[subset_img_id]], [img_idx_ls[subset_img_id]], [all_grouped_sub_q_ids_ls[subset_img_id]]
+
+    # return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
 
 def load_sharegpt4v_datasets(data_path, query_path):
     # img_caption_file_name = query_path
