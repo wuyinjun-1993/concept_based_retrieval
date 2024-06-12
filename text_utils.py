@@ -111,6 +111,7 @@ def convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_coun
     sentences = text_model.convert_corpus_to_ls(corpus)
     
     if args.total_count > 0:
+        sentences = sorted(sentences)
         samples_hash = utils.hashfn(sentences)
     else:
         samples_hash = f"{args.dataset_name}_full"
@@ -121,17 +122,18 @@ def convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_coun
         img_emb = utils.load(corpus_embedding_file_name)
         img_emb = img_emb.cpu()
     else:
-        local_bz = 512
+        local_bz = 20480
         for idx in tqdm(range(0, len(corpus), local_bz)):
-            curr_corpus = corpus[idx:idx+local_bz]
+            end_id = min(idx+local_bz, len(corpus))
+            curr_corpus = corpus[idx:end_id]
             img_emb = text_model.encode_corpus(curr_corpus,convert_to_tensor=True, show_progress_bar=False)
             if idx == 0:
                 img_emb_ls = img_emb.cpu()
             else:
                 img_emb_ls = torch.cat([img_emb_ls, img_emb.cpu()], dim=0)
         # img_emb = text_model.encode_corpus(corpus,convert_to_tensor=True, show_progress_bar=False)    
-        # img_emb = img_emb.cpu()
-        utils.save(img_emb_ls, corpus_embedding_file_name)
+        img_emb = img_emb_ls
+        utils.save(img_emb, corpus_embedding_file_name)
     
     if args.img_concept:
         patch_activation_ls=[]
@@ -200,6 +202,7 @@ def subset_corpus2(corpus, qrels, count, idx_to_rid):
     
     if len(key_ls) < count:
         remaining_keys = list(set(corpus.keys()).difference(set(key_ls)))
+        remaining_keys = sorted(remaining_keys)
         key_ls = key_ls + remaining_keys[:count - len(key_ls)]
         
     

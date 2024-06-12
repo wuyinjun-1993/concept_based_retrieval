@@ -258,7 +258,7 @@ if __name__ == "__main__":
         filter_queries_with_gt(full_data_path, args, queries)
         queries = {queries[key] for key in qrels}
         
-        queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_sub.jsonl"), subset_img_id=args.subset_img_id)
+        queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_sub0.jsonl"), subset_img_id=args.subset_img_id)
         
         print(sub_queries_ls)
         
