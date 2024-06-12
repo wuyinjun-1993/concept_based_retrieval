@@ -5,6 +5,8 @@ from torch.utils.data import Dataset, TensorDataset, DataLoader
 from tqdm import tqdm
 import hashlib
 import PIL
+import json
+import os
 
 def get_final_res_file_name(args, patch_count_ls):
     patch_count_ls = sorted(patch_count_ls)
@@ -46,3 +48,30 @@ def load(filename):
 def save(obj, filename):
     with open(filename, 'wb') as f:
         pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+        
+def filter_queries_with_gt(full_data_path, args, queries):
+    output_file_path = os.path.join(full_data_path, args.dataset_name, "queries_with_gt.jsonl")
+    if os.path.exists(output_file_path):
+        return 
+
+
+    full_query_set_file = os.path.join(full_data_path, args.dataset_name, "queries.jsonl")
+        
+    with open(full_query_set_file, 'r') as json_file:
+        json_list = list(json_file)
+    
+    result_ls = []
+    for json_str in json_list:
+        result = json.loads(json_str)
+        if result["_id"] in queries:
+            result_ls.append(result)
+            
+    
+    # Open the file in write mode
+    with open(output_file_path, 'w') as jsonl_file:
+        # Iterate over each JSON object in the list
+        for json_obj in result_ls:
+            # Convert the JSON object to a JSON string
+            json_str = json.dumps(json_obj)
+            # Write the JSON string to the file with a newline character
+            jsonl_file.write(json_str + '\n')

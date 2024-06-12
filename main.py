@@ -20,10 +20,11 @@ from text_utils import *
 import copy
 import os, shutil
 from bbox_utils import *
+from utils import *
 
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco"]
-text_retrieval_datasets = ["trec-covid"]
+text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco"]
 
 
 
@@ -195,7 +196,7 @@ if __name__ == "__main__":
     # , bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls
     
     if args.dataset_name == "flickr":
-        queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls = load_flickr_dataset(full_data_path, full_data_path, subset_img_id=args.subset_img_id)
+        queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls = load_flickr_dataset_full(full_data_path, full_data_path, subset_img_id=args.subset_img_id)
         
         img_idx_ls, img_file_name_ls = load_other_flickr_images(full_data_path, query_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
         
@@ -250,6 +251,34 @@ if __name__ == "__main__":
         # args.algebra_method=three
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "crepe/"))
         # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "crepe/crepe_captions.txt"))
+    elif args.dataset_name == "hotpotqa":
+        url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(args.dataset_name)
+        data_path = util.download_and_unzip(url, full_data_path)
+        corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
+        filter_queries_with_gt(full_data_path, args, queries)
+        queries = {queries[key] for key in qrels}
+        
+        queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_sub.jsonl"), subset_img_id=args.subset_img_id)
+        
+        print(sub_queries_ls)
+        
+        subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
+        if False: #os.path.exists(subset_file_name):
+            corpus, qrels = utils.load(subset_file_name)
+        else:        
+            corpus, qrels = subset_corpus2(corpus, qrels, args.total_count, idx_to_rid)
+            utils.save((corpus, qrels), subset_file_name)
+        
+        qrels = {key: qrels[idx_to_rid[key]] for key in sub_queries_ls if not check_empty_mappings(qrels[idx_to_rid[key]]) and idx_to_rid[key] in qrels}
+        
+        if len(qrels) == 0:
+            print("no valid queries, exit!")
+            exit(1)
+        
+        origin_corpus = None #copy.copy(corpus)
+        corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
+        grouped_sub_q_ids_ls = [None for _ in range(len(queries))]
+    
     
     if args.is_img_retrieval:
         # if not args.query_concept:    

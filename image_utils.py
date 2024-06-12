@@ -21,6 +21,7 @@ from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 import gc
 import pickle
+from LLM4split.prompt_utils import obtain_response_from_openai
 
 @dataclass
 class Patch:
@@ -89,7 +90,7 @@ def load_atom_datasets(data_path):
     
     # selected_dataset = filter_atom_images_by_langs(dataset) 
 
-def load_flickr_dataset(data_path, query_path, subset_img_id=None):
+def load_flickr_dataset(data_path, query_path, subset_img_id=None, redecompose=False):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
     # img_caption_file_name= os.path.join(query_path, "sub_queries.csv")
@@ -107,6 +108,11 @@ def load_flickr_dataset(data_path, query_path, subset_img_id=None):
     sub_caption_ls = []
     img_file_name_ls = []
     all_grouped_sub_q_ids_ls = []
+    
+    if 'caption_triples_ls' not in caption_pd.columns:
+        caption_pd['caption_triples_ls'] = np.nan
+    if "groups" not in caption_pd.columns:
+        caption_pd['groups'] = np.nan 
 
     for idx in tqdm(range(len(caption_pd))):
         image_idx = caption_pd.iloc[idx]['image_id']
@@ -126,7 +132,16 @@ def load_flickr_dataset(data_path, query_path, subset_img_id=None):
         # sub_caption_str = caption_pd.iloc[idx]['caption_triples']
         sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
         # sub_captions = decompose_single_query(sub_caption_str)
+        
+        
+        if pd.isnull(caption_pd.iloc[idx]['caption_triples_ls']) or redecompose:
+            sub_caption_str=obtain_response_from_openai(dataset_name="flickr", query=caption)
+            caption_pd.at[idx, "caption_triples_ls"] = sub_caption_str
+        else:
+            sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
+        
         sub_captions = decompose_single_query_ls(sub_caption_str)
+        
         query_paritions_str = caption_pd.iloc[idx]['groups']
         grouped_sub_q_ids_ls = decompose_single_query_parition_groups(sub_captions, query_paritions_str)
         print(sub_captions)
@@ -143,6 +158,105 @@ def load_flickr_dataset(data_path, query_path, subset_img_id=None):
         return [caption_ls[subset_img_id]], [img_file_name_ls[subset_img_id]], [sub_caption_ls[subset_img_id]], [img_idx_ls[subset_img_id]], [all_grouped_sub_q_ids_ls[subset_img_id]]
 
     # return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
+
+def load_flickr_dataset_full(data_path, query_path, subset_img_id=None, redecompose=False, total_count = 1000):
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
+    
+    # img_caption_file_name= os.path.join(query_path, "sub_queries.csv")
+    if total_count < 0:
+        img_caption_file_name= os.path.join(query_path, "full_queries.csv")
+    else:
+        img_caption_file_name= os.path.join(query_path, "full_queries_" + str(total_count) + ".csv")
+    is_full_query_file = True
+    if not os.path.exists(img_caption_file_name):
+        is_full_query_file = False
+        img_caption_file_name= os.path.join(query_path, "results_20130124.token")
+        caption_pd = pd.read_csv(img_caption_file_name, sep="\t")
+    else:
+        caption_pd = pd.read_csv(img_caption_file_name)
+
+
+
+    img_folder = os.path.join(data_path, "flickr30k-images/")
+    # img_folder2 = os.path.join(data_path, "VG_100K_2/")
+
+    if not is_full_query_file:
+        header_names = ["image_id", "caption"]
+    else:
+        # if len(caption_pd.columns) == 3:
+        header_names = ["image_id", "caption", "caption_triples_ls", "groups"]
+            
+    caption_pd.columns = header_names[0:len(caption_pd.columns)]
+    
+    
+    # img_ls = []
+    img_idx_ls = []
+    caption_ls = []
+    sub_caption_ls = []
+    img_file_name_ls = []
+    all_grouped_sub_q_ids_ls = []
+    
+    if 'caption_triples_ls' not in caption_pd.columns:
+        caption_pd['caption_triples_ls'] = np.nan
+    if "groups" not in caption_pd.columns:
+        caption_pd['groups'] = np.nan 
+
+    for idx in tqdm(range(len(caption_pd))):
+        image_idx = caption_pd.iloc[idx]['image_id']
+        image_idx = image_idx.split("#")[0]
+        if image_idx in img_idx_ls:
+            continue
+        
+        full_img_file_name = os.path.join(img_folder, str(image_idx))
+        # if not os.path.exists(full_img_file_name):
+        #     full_img_file_name = os.path.join(img_folder2, str(image_idx) + ".jpg")
+        if not os.path.exists(full_img_file_name):
+            continue
+        img_file_name_ls.append(full_img_file_name)
+        
+        # img = Image.open(full_img_file_name)
+        # img = img.convert('RGB')
+        caption = caption_pd.iloc[idx]['caption']
+        # sub_caption_str = caption_pd.iloc[idx]['caption_triples']
+        sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
+        # sub_captions = decompose_single_query(sub_caption_str)
+        
+        
+        if pd.isnull(caption_pd.iloc[idx]['caption_triples_ls']) or redecompose:
+            sub_caption_str=obtain_response_from_openai(dataset_name="flickr", query=caption)
+            sub_caption_str_ls = sub_caption_str.split("|")
+            segmented_sub_caption_str_ls = []
+            for sub_caption_str in sub_caption_str_ls:
+                segmented_sub_caption_str_ls.append(obtain_response_from_openai(dataset_name="flickr_two", query=sub_caption_str))
+            
+            sub_caption_str = "|".join(segmented_sub_caption_str_ls)
+            caption_pd.at[idx, "caption_triples_ls"] = sub_caption_str
+        else:
+            sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
+        
+        sub_captions = decompose_single_query_ls(sub_caption_str)
+        
+        query_paritions_str = caption_pd.iloc[idx]['groups']
+        grouped_sub_q_ids_ls = decompose_single_query_parition_groups(sub_captions, query_paritions_str)
+        print(sub_captions)
+        # img_ls.append(img)
+        img_idx_ls.append(image_idx)
+        caption_ls.append(caption)
+        sub_caption_ls.append(sub_captions)
+        all_grouped_sub_q_ids_ls.append(grouped_sub_q_ids_ls)
+        
+        if total_count > 0 and len(img_file_name_ls) >= total_count:
+            break
+
+    caption_pd.to_csv(img_caption_file_name, index=False)
+    if subset_img_id is None:
+        return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
+    else:
+        print(sub_caption_ls[subset_img_id])
+        return [caption_ls[subset_img_id]], [img_file_name_ls[subset_img_id]], [sub_caption_ls[subset_img_id]], [img_idx_ls[subset_img_id]], [all_grouped_sub_q_ids_ls[subset_img_id]]
+
+    # return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
+
 
 def load_sharegpt4v_datasets(data_path, query_path):
     # img_caption_file_name = query_path
@@ -199,12 +313,13 @@ def load_other_sharegpt4v_mscoco_images(dataset_path, img_idx_ls, img_file_name_
     return img_idx_ls, img_file_name_ls
 
 
-def load_crepe_datasets(data_path, query_path, subset_img_id=None):
+def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=False):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6.csv")
-    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6.csv")
-    
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
+    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output.csv")
+
     with open("prod_hard_negatives/selected_img_id_ls", "rb") as f:
         selected_img_id_ls = pickle.load(f)
 
@@ -219,7 +334,12 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None):
     sub_caption_ls = []
     img_file_name_ls = []
     all_grouped_sub_q_ids_ls = []
-    for idx in range(len(caption_pd)):
+    if 'caption_triples_ls' not in caption_pd.columns:
+        caption_pd['caption_triples_ls'] = np.nan
+    if "groups" not in caption_pd.columns:
+       caption_pd['groups'] = np.nan 
+
+    for idx in tqdm(range(len(caption_pd))):
         image_idx = caption_pd.iloc[idx]['image_id']
         if image_idx in img_idx_ls:
             continue
@@ -235,7 +355,14 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None):
         # img = img.convert('RGB')
         caption = caption_pd.iloc[idx]['caption']
         # sub_caption_str = caption_pd.iloc[idx]['caption_triples']
-        sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
+        # sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
+        if pd.isnull(caption_pd.iloc[idx]['caption_triples_ls']) or redecompose:
+            sub_caption_str=obtain_response_from_openai(query=caption)
+            caption_pd.at[idx, "caption_triples_ls"] = sub_caption_str
+        else:
+            sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
+            
+            
         
         # sub_captions = decompose_single_query(sub_caption_str)
         sub_captions = decompose_single_query_ls(sub_caption_str)
@@ -249,6 +376,9 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None):
         sub_caption_ls.append(sub_captions)
         img_file_name_ls.append(full_img_file_name)
         all_grouped_sub_q_ids_ls.append(grouped_sub_q_ids_ls)
+        
+    img_caption_file_name_output= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output.csv")
+    caption_pd.to_csv(img_caption_file_name_output, index=False)
     # return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls
     if subset_img_id is None:
         return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls

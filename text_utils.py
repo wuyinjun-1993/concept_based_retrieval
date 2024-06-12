@@ -50,7 +50,7 @@ class ConceptLearner_text:
             if idx+patch_count >= len(corpus_content_split):
                 break
         
-        curr_corpus_embedding = self.model.encode_str_ls(sentence_ls, convert_to_tensor=True)
+        curr_corpus_embedding = self.model.encode_str_ls(sentence_ls, convert_to_tensor=True, show_progress_bar=False)
         
         return curr_corpus_embedding.cpu(), bbox_ls
         
@@ -82,7 +82,7 @@ class ConceptLearner_text:
         patch_activations = []
         full_bbox_ls = []
         
-        for key in range(len(self.corpus)):
+        for key in tqdm(range(len(self.corpus))):
             patch_activation, bbox_ls = self.split_and_encoding_single_corpus(key, patch_count=patch_count)
             # patch_activations[key] = torch.cat(patch_activation)
             patch_activations.append(patch_activation)
@@ -121,14 +121,22 @@ def convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_coun
         img_emb = utils.load(corpus_embedding_file_name)
         img_emb = img_emb.cpu()
     else:
-        img_emb = text_model.encode_corpus(corpus,convert_to_tensor=True)    
-        img_emb = img_emb.cpu()
-        utils.save(img_emb, corpus_embedding_file_name)
+        local_bz = 512
+        for idx in tqdm(range(0, len(corpus), local_bz)):
+            curr_corpus = corpus[idx:idx+local_bz]
+            img_emb = text_model.encode_corpus(curr_corpus,convert_to_tensor=True, show_progress_bar=False)
+            if idx == 0:
+                img_emb_ls = img_emb.cpu()
+            else:
+                img_emb_ls = torch.cat([img_emb_ls, img_emb.cpu()], dim=0)
+        # img_emb = text_model.encode_corpus(corpus,convert_to_tensor=True, show_progress_bar=False)    
+        # img_emb = img_emb.cpu()
+        utils.save(img_emb_ls, corpus_embedding_file_name)
     
     if args.img_concept:
         patch_activation_ls=[]
         full_bbox_ls = []
-        for idx in tqdm(range(len(patch_count_ls))):
+        for idx in range(len(patch_count_ls)):
             patch_count = patch_count_ls[idx]
             patch_activations, bbox_ls = cl.get_patches(samples_hash, method="slic", patch_count=patch_count)
             # cos_sim_ls = []
@@ -174,6 +182,26 @@ def subset_corpus(corpus, qrels, count):
     if count < 0:
         return corpus, qrels
     key_ls = list(corpus.keys())[:count]
+    
+    sub_corpus = {key: corpus[key] for key in key_ls}
+    
+    sub_qrels = {key: {sub_key: qrels[key][sub_key] for sub_key in qrels[key] if sub_key in key_ls} for key in tqdm(qrels)}
+    
+    return sub_corpus, sub_qrels
+
+def subset_corpus2(corpus, qrels, count, idx_to_rid):
+    if count < 0:
+        return corpus, qrels
+    key_ls = set()
+    for rid in list(idx_to_rid.values()):
+        key_ls.update(list(qrels[rid].keys()))
+    
+    key_ls = list(key_ls)
+    
+    if len(key_ls) < count:
+        remaining_keys = list(set(corpus.keys()).difference(set(key_ls)))
+        key_ls = key_ls + remaining_keys[:count - len(key_ls)]
+        
     
     sub_corpus = {key: corpus[key] for key in key_ls}
     
