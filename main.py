@@ -76,7 +76,7 @@ def embed_queries_ls(full_sub_queries_ls, processor, model, device, model_name):
                         inputs = {key: val.to(device) for key, val in inputs.items()}
                         text_features = model.get_text_features(**inputs)
                     elif model_name == "blip":
-                        text_features = model.extract_features(inputs, mode="text").image_embeds_proj[:,0,:]
+                        text_features = model.extract_features({"text_input":inputs}, mode="text").text_embeds_proj[:,0,:]
                     else:
                         raise ValueError("Invalid model name")
                         
@@ -392,7 +392,7 @@ if __name__ == "__main__":
             # full_sub_queries_ls = sub_queries_ls
             full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
                 # full_sub_queries_ls = [[sub_queries_ls[idx]] for idx in range(len(sub_queries_ls))]
-            text_emb_ls = embed_queries_ls(full_sub_queries_ls, text_processor, model, device,)
+            text_emb_ls = embed_queries_ls(full_sub_queries_ls, text_processor, model, device,args.model_name)
             # text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)
         else:
             # if args.dataset_name == "flickr":

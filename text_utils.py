@@ -115,6 +115,7 @@ def convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_coun
         samples_hash = utils.hashfn(sentences)
     else:
         samples_hash = f"{args.dataset_name}_full"
+    print("sample hash::", samples_hash)
     
     corpus_embedding_file_name = f"output/saved_corpus_embeddings_{samples_hash}.pkl"
     

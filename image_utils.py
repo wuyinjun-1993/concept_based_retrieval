@@ -320,9 +320,9 @@ def load_other_sharegpt4v_mscoco_images(dataset_path, img_idx_ls, img_file_name_
 def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=False):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
-    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6.csv")
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6.csv")
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
-    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output2.csv")
+    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output.csv")
 
     with open("prod_hard_negatives/selected_img_id_ls", "rb") as f:
         selected_img_id_ls = pickle.load(f)
