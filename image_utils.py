@@ -1143,7 +1143,7 @@ class ConceptLearner:
                 #     return img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
                 # else:
                 #     return img_idx_ls, image_embs, patch_activations, img_for_patch
-        if model_name == "clip":
+        if model_name == "default":
             cached_img_file_name = f"output/saved_img_embs_{method}_{samples_hash}.pkl"
         else:
             cached_img_file_name = f"output/saved_img_embs_{method}_{model_name}_{samples_hash}.pkl"
@@ -1410,7 +1410,7 @@ def segment_all_images(data_folder, img_name_ls, split="train", sam_model_type="
 def convert_samples_to_concepts_img(args, samples_hash, model, img_file_name_ls, img_idx_ls, processor, device, patch_count_ls = [32], save_mask_bbox=False):
     # samples: list[PIL.Image], labels, input_to_latent, input_processor, dataset_name, device: str = 'cpu'
     # cl = ConceptLearner(images, labels, vit_forward, processor, img_processor, args.dataset_name, device)
-    if args.model_name == "clip":
+    if args.model_name == "default":
         cl = ConceptLearner(img_file_name_ls, model, vit_forward, processor, args.dataset_name, device)
     elif args.model_name == "blip":
         cl = ConceptLearner(img_file_name_ls, model, blip_vit_forward, processor, args.dataset_name, device)

@@ -56,9 +56,14 @@ class ConceptLearner_text:
         
     
     
-    def get_patches(self, samples_hash, method="slic", patch_count=32):
+    def get_patches(self, model_name, samples_hash, method="slic", patch_count=32):
         
-        cached_file_name=f"output/saved_patches_{method}_{patch_count}_{samples_hash}.pkl"
+        if model_name == "default":
+            cached_file_name=f"output/saved_patches_{method}_{patch_count}_{samples_hash}.pkl"
+        elif model_name == "llm":
+            cached_file_name=f"output/saved_patches_{method}_llm_{patch_count}_{samples_hash}.pkl"
+        else:
+            raise Exception("Invalid model name")
         
         if os.path.exists(cached_file_name):
             print("Loading cached patches")
@@ -117,7 +122,12 @@ def convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_coun
         samples_hash = f"{args.dataset_name}_full"
     print("sample hash::", samples_hash)
     
-    corpus_embedding_file_name = f"output/saved_corpus_embeddings_{samples_hash}.pkl"
+    if args.model_name == "default":
+        corpus_embedding_file_name = f"output/saved_corpus_embeddings_{samples_hash}.pkl"
+    elif args.model_name == "llm":
+        corpus_embedding_file_name = f"output/saved_corpus_embeddings_llm_{samples_hash}.pkl"
+    else:
+        raise Exception("Invalid model name")
     
     if os.path.exists(corpus_embedding_file_name):
         img_emb = utils.load(corpus_embedding_file_name)
@@ -141,7 +151,7 @@ def convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_coun
         full_bbox_ls = []
         for idx in range(len(patch_count_ls)):
             patch_count = patch_count_ls[idx]
-            patch_activations, bbox_ls = cl.get_patches(samples_hash, method="slic", patch_count=patch_count)
+            patch_activations, bbox_ls = cl.get_patches(args.model_name, samples_hash, method="slic", patch_count=patch_count)
             # cos_sim_ls = []
             # for sub_idx in range(len(patch_activations)):
             #     cos_sim = torch.nn.functional.cosine_similarity(img_emb[sub_idx].view(1,-1), patch_activations[sub_idx].view(1,-1)).item()
