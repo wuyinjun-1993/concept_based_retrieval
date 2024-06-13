@@ -21,7 +21,7 @@ import copy
 import os, shutil
 from bbox_utils import *
 from utils import *
-
+from lavis.models import load_model_and_preprocess
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco"]
 text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco"]
@@ -43,20 +43,23 @@ def embed_queries(filename_ls, filename_cap_mappings, processor, model, device):
             text_emb_ls.append(text_features.cpu())
     return text_emb_ls
 
-def embed_queries_with_input_queries(query_ls, processor, model, device):
+def embed_queries_with_input_queries(model_name, query_ls, processor, model, device):
     text_emb_ls = []
     with torch.no_grad():
         # for filename, caption in tqdm(filename_cap_mappings.items()):
         for caption in query_ls:
             # caption = filename_cap_mappings[file_name]
             inputs = processor(caption)
-            inputs = {key: val.to(device) for key, val in inputs.items()}
-            text_features = model.get_text_features(**inputs)
+            if model_name == "clip":
+                inputs = {key: val.to(device) for key, val in inputs.items()}
+                text_features = model.get_text_features(**inputs)
+            else:
+                text_features = model.extract_features({"text_input":inputs}, mode="text").text_embeds_proj[:,0,:]
             # text_features = outputs.last_hidden_state[:, 0, :]
             text_emb_ls.append(text_features.cpu())
     return text_emb_ls
 
-def embed_queries_ls(full_sub_queries_ls, processor, model, device):
+def embed_queries_ls(full_sub_queries_ls, processor, model, device, model_name):
     text_emb_ls = []
     with torch.no_grad():
         # for filename, caption in tqdm(filename_cap_mappings.items()):
@@ -68,8 +71,15 @@ def embed_queries_ls(full_sub_queries_ls, processor, model, device):
                 for subquery in sub_queries:
                     # caption = filename_cap_mappings[file_name]
                     inputs = processor(subquery)
-                    inputs = {key: val.to(device) for key, val in inputs.items()}
-                    text_features = model.get_text_features(**inputs)
+                    
+                    if model_name == "clip":
+                        inputs = {key: val.to(device) for key, val in inputs.items()}
+                        text_features = model.get_text_features(**inputs)
+                    elif model_name == "blip":
+                        text_features = model.extract_features(inputs, mode="text").image_embeds_proj[:,0,:]
+                    else:
+                        raise ValueError("Invalid model name")
+                        
                     sub_text_feature_ls.append(text_features.cpu())
                 # text_features = outputs.last_hidden_state[:, 0, :]
                 sub_text_emb_ls.append(sub_text_feature_ls)
@@ -103,6 +113,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='CUB concept learning')
     parser.add_argument('--data_path', type=str, default="/data6/wuyinjun/", help='config file')
     parser.add_argument('--dataset_name', type=str, default="crepe", help='config file')
+    parser.add_argument('--model_name', type=str, default="clip", choices=["clip", "blip"], help='config file')
     parser.add_argument('--query_count', type=int, default=-1, help='config file')
     parser.add_argument('--query_concept', action="store_true", help='config file')
     parser.add_argument('--img_concept', action="store_true", help='config file')
@@ -157,13 +168,34 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # processor = ViTImageProcessor.from_pretrained('google/vit-large-patch16-224')
     # model = ViTForImageClassification.from_pretrained('google/vit-large-patch16-224').to(device)
-    model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14").to(device)
-    # processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
-    raw_processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
-    # processor =  lambda images: raw_processor(images=images, return_tensors="pt", padding=False, do_resize=False, do_center_crop=False)["pixel_values"]
-    processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
-    text_processor =  lambda text: raw_processor(text=[text], return_tensors="pt", padding=True, truncation=True)
-    img_processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
+    if args.model_name == "clip":
+        model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14").to(device)
+        # processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
+        raw_processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
+        # processor =  lambda images: raw_processor(images=images, return_tensors="pt", padding=False, do_resize=False, do_center_crop=False)["pixel_values"]
+        processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
+        text_processor =  lambda text: raw_processor(text=[text], return_tensors="pt", padding=True, truncation=True)
+        img_processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
+    elif args.model_name == "blip":
+        model, vis_processors, txt_processors = load_model_and_preprocess(name="blip_feature_extractor", model_type="base", is_eval=True, device=device)
+        # def text_processor_func(text_ls):
+        #     res_ls = []
+        #     for text in text_ls:
+        #         res_ls.append(txt_processors["eval"](text))
+        #     res_tensor = torch.cat(res_ls)
+        #     return res_tensor
+        
+        text_processor = lambda text: txt_processors["eval"](text)
+        def img_processor_func(image_ls):
+            res_ls = []
+            for image in image_ls:
+                res_ls.append(vis_processors["eval"](image).unsqueeze(0))
+            res_tensor = torch.cat(res_ls)
+            return res_tensor
+        img_processor = lambda image: img_processor_func(image)
+        processor = lambda image: img_processor_func(image)
+        
+        
     model = model.eval()
     # if args.dataset_name not in image_retrieval_datasets:
     if not args.is_img_retrieval:
@@ -360,13 +392,13 @@ if __name__ == "__main__":
             # full_sub_queries_ls = sub_queries_ls
             full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
                 # full_sub_queries_ls = [[sub_queries_ls[idx]] for idx in range(len(sub_queries_ls))]
-            text_emb_ls = embed_queries_ls(full_sub_queries_ls, text_processor, model, device)
+            text_emb_ls = embed_queries_ls(full_sub_queries_ls, text_processor, model, device,)
             # text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)
         else:
             # if args.dataset_name == "flickr":
             #     text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)
             # else:
-                text_emb_ls = embed_queries_with_input_queries(queries, text_processor, model, device)
+                text_emb_ls = embed_queries_with_input_queries(args.model_name, queries, text_processor, model, device)
     else:
         if not args.query_concept:
             text_emb_ls = text_retrieval_model.model.encode_queries(queries, convert_to_tensor=True)

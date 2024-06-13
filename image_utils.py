@@ -36,6 +36,10 @@ def vit_forward(imgs, model, masks=None):
         # Select the CLS token embedding from the last hidden layer
         # return model(pixel_values=imgs).last_hidden_state[:, 0, :]
         return model.get_image_features(pixel_values=imgs, output_hidden_states=True)
+def blip_vit_forward(image, model):
+    with torch.no_grad():
+        return model.extract_features({"image": image}, mode="image").image_embeds_proj[:,0,:]
+
 
 def filter_atom_images_by_langs(dataset, target_count = 10000):
     count = 0
@@ -316,9 +320,9 @@ def load_other_sharegpt4v_mscoco_images(dataset_path, img_idx_ls, img_file_name_
 def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=False):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
-    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6.csv")
+    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6.csv")
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
-    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output2.csv")
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output2.csv")
 
     with open("prod_hard_negatives/selected_img_id_ls", "rb") as f:
         selected_img_id_ls = pickle.load(f)
@@ -1077,7 +1081,7 @@ class ConceptLearner:
         return patch_activation_ls
         
 
-    def get_patches(self, patch_count_ls, samples_hash, img_idx_ls=None, img_file_name_ls=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True, save_mask_bbox=False):
+    def get_patches(self, model_name, patch_count_ls, samples_hash, img_idx_ls=None, img_file_name_ls=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True, save_mask_bbox=False):
         """Get patches from images using different segmentation methods."""
         if img_file_name_ls is None:
             img_file_name_ls = self.samples
@@ -1092,7 +1096,8 @@ class ConceptLearner:
             os.mkdir(f"output/")
         for idx in range(len(patch_count_ls)):
             n_patches = patch_count_ls[idx]
-            cached_file_name = f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
+            cached_file_name = utils.obtain_cached_file_name(model_name, method, n_patches, samples_hash, not_normalize=not_normalize, use_mask=use_mask)
+            # cached_file_name = f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
             if os.path.exists(cached_file_name):
                 print("Loading cached patches")
                 print(samples_hash)
@@ -1138,7 +1143,10 @@ class ConceptLearner:
                 #     return img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
                 # else:
                 #     return img_idx_ls, image_embs, patch_activations, img_for_patch
-        cached_img_file_name = f"output/saved_img_embs_{method}_{samples_hash}.pkl"
+        if model_name == "clip":
+            cached_img_file_name = f"output/saved_img_embs_{method}_{samples_hash}.pkl"
+        else:
+            cached_img_file_name = f"output/saved_img_embs_{method}_{model_name}_{samples_hash}.pkl"
         if os.path.exists(cached_img_file_name):
             image_embs, cached_img_idx_ls = utils.load(cached_img_file_name)
         else:
@@ -1207,7 +1215,8 @@ class ConceptLearner:
             if patch_count_for_compute_ls[patch_count_idx] == False:
                 continue        
             n_patches = patch_count_ls[patch_count_idx]
-            cached_file_name = f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
+            # cached_file_name = f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
+            cached_file_name = utils.obtain_cached_file_name(model_name, method, n_patches, samples_hash, not_normalize=not_normalize, use_mask=use_mask)
             if save_mask_bbox:
                 patch_activations, img_for_patch, masks, bboxes = patch_emb_ls[patch_count_idx], img_per_batch_ls[patch_count_idx], masks_ls[patch_count_idx], bboxes_ls[patch_count_idx]
                 utils.save((patch_activations, masks, bboxes, img_for_patch), cached_file_name)
@@ -1401,13 +1410,18 @@ def segment_all_images(data_folder, img_name_ls, split="train", sam_model_type="
 def convert_samples_to_concepts_img(args, samples_hash, model, img_file_name_ls, img_idx_ls, processor, device, patch_count_ls = [32], save_mask_bbox=False):
     # samples: list[PIL.Image], labels, input_to_latent, input_processor, dataset_name, device: str = 'cpu'
     # cl = ConceptLearner(images, labels, vit_forward, processor, img_processor, args.dataset_name, device)
-    cl = ConceptLearner(img_file_name_ls, model, vit_forward, processor, args.dataset_name, device)
+    if args.model_name == "clip":
+        cl = ConceptLearner(img_file_name_ls, model, vit_forward, processor, args.dataset_name, device)
+    elif args.model_name == "blip":
+        cl = ConceptLearner(img_file_name_ls, model, blip_vit_forward, processor, args.dataset_name, device)
+    else:
+        raise ValueError("Invalid model name")
     # bbox x1,y1,x2,y2
     # image_embs, patch_activations, masks, bboxes, img_for_patch
     # n_patches, images=None, method="slic", not_normalize=False
 
     
-    res = cl.get_patches(patch_count_ls, samples_hash, img_idx_ls=img_idx_ls, img_file_name_ls=img_file_name_ls, method="slic", compute_img_emb=True, save_mask_bbox=save_mask_bbox)
+    res = cl.get_patches(args.model_name, patch_count_ls, samples_hash, img_idx_ls=img_idx_ls, img_file_name_ls=img_file_name_ls, method="slic", compute_img_emb=True, save_mask_bbox=save_mask_bbox)
     
     return res
     
