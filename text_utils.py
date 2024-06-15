@@ -114,16 +114,17 @@ def generate_patch_ids_ls(patch_embs_ls):
         transformed_patch_embs_ls.append(torch.cat(patch_embs, dim=0))
     return nested_patch_ids_ls, patch_ids_ls, transformed_patch_embs_ls
 
-def construct_dense_or_sparse_encodings_queries(queries, text_model):
+def construct_dense_or_sparse_encodings_queries(queries, text_model,add_sparse_index):
     jsonl_data = []
     vocab_dict = text_model.q_model.tokenizer.get_vocab()
     vocab_dict = {v: k for k, v in vocab_dict.items()}
     tokenizer = text_model.q_model.tokenizer
     text_emb_dense = text_model.encode_queries(queries, convert_to_tensor=True)
-    text_emb_sparse = text_model.encode_queries(queries, convert_to_tensor=True, is_sparse=True)
-    if type(queries) is dict:
-        queries = [queries[str(i+1)] for i in range(len(queries))]
-    construct_sparse_index(jsonl_data, vocab_dict, list(range(len(queries))), text_emb_sparse, queries, tokenizer)
+    if add_sparse_index:
+        text_emb_sparse = text_model.encode_queries(queries, convert_to_tensor=True, is_sparse=True)
+        if type(queries) is dict:
+            queries = [queries[str(i+1)] for i in range(len(queries))]
+        construct_sparse_index(jsonl_data, vocab_dict, list(range(len(queries))), text_emb_sparse, queries, tokenizer)
     return text_emb_dense, jsonl_data
 
 
@@ -148,10 +149,10 @@ def construct_dense_or_sparse_encodings(args, corpus, text_model, samples_hash, 
         if not is_sparse:
             img_emb = img_emb.cpu()
     else:
-        local_bz = 20480
-        bz = 2048
-        if is_sparse:
-            bz = 128
+        local_bz = 1024
+        bz = 1024
+        if is_sparse or args.model_name == "llm":
+            bz = 32
         for idx in tqdm(range(0, len(corpus), local_bz)):
             end_id = min(idx+local_bz, len(corpus))
             curr_corpus = corpus[idx:end_id]
@@ -214,8 +215,10 @@ def convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_coun
     #     utils.save(img_emb, corpus_embedding_file_name)
         
     img_emb = construct_dense_or_sparse_encodings(args, corpus, text_model, samples_hash)
-    img_sparse_emb = construct_dense_or_sparse_encodings(args, corpus, text_model, samples_hash, is_sparse=True)
-    store_sparse_index(samples_hash, img_sparse_emb, encoding_query = False)
+    img_sparse_emb = None
+    if args.add_sparse_index:
+        img_sparse_emb = construct_dense_or_sparse_encodings(args, corpus, text_model, samples_hash, is_sparse=True)
+        store_sparse_index(samples_hash, img_sparse_emb, encoding_query = False)
     if args.img_concept:
         patch_activation_ls=[]
         full_bbox_ls = []

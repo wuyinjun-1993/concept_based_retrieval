@@ -8,3 +8,4 @@ from .splade import SPLADE
 from .tldr import TLDR
 from .clip_model import clip_model
 from .ms_phi import ms_phi
+from .llm_to_vec import LlmtoVec

@@ -22,6 +22,7 @@ import os, shutil
 from bbox_utils import *
 from utils import *
 from sparse_index import *
+from baselines.llm_ranker import *
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco"]
 text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco"]
@@ -118,6 +119,9 @@ def parse_args():
     parser.add_argument('--prob_agg', type=str, default="prod", choices=["prod", "sum"], help='config file')
     parser.add_argument('--dependency_topk', type=int, default=20, help='config file')
     parser.add_argument('--clustering_topk', type=int, default=500, help='config file')
+    parser.add_argument("--add_sparse_index", action="store_true", help="config file")
+    
+    parser.add_argument('--retrieval_method', type=str, default="ours", help='config file')
     
     
     
@@ -178,8 +182,13 @@ if __name__ == "__main__":
         # text_model = models.clip_model(text_processor, model, device)
         if args.model_name == "default":
             text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b", prefix = sparse_prefix, suffix=sparse_suffix)
-        elif args.model_name == "phi":
-            text_model = models.ms_phi(prefix=sparse_prefix, suffix=sparse_suffix)
+        # elif args.model_name == "phi":
+        #     text_model = models.ms_phi(prefix=sparse_prefix, suffix=sparse_suffix)
+        elif args.model_name == "llm":
+            # text_model = models.LlmtoVec(("McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp","McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp"),
+            #     ("McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp-supervised","McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp-supervised"))
+            text_model = models.LlmtoVec(("McGill-NLP/LLM2Vec-Sheared-LLaMA-mntp", "McGill-NLP/LLM2Vec-Sheared-LLaMA-mntp"),
+                ("McGill-NLP/LLM2Vec-Sheared-LLaMA-mntp-supervised", "McGill-NLP/LLM2Vec-Sheared-LLaMA-mntp-supervised"))
         else:
             raise ValueError("Invalid model name")
         # text_model = AutoModelForCausalLM.from_pretrained(
@@ -390,18 +399,19 @@ if __name__ == "__main__":
     else:
         if not args.query_concept:
             # text_emb_ls = text_model.encode_queries(queries, convert_to_tensor=True)
-            text_emb_ls, query_sparse_index = construct_dense_or_sparse_encodings_queries(queries, text_model)
+            text_emb_ls, query_sparse_index = construct_dense_or_sparse_encodings_queries(queries, text_model, args.add_sparse_index)
                     
         else:
-            _, query_sparse_index = construct_dense_or_sparse_encodings_queries(queries, text_model)
+            _, query_sparse_index = construct_dense_or_sparse_encodings_queries(queries, text_model, args.add_sparse_index)
             full_sub_queries_ls = sub_queries_ls
             full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
             text_emb_ls = encode_sub_queries_ls(full_sub_queries_ls, text_model)
-            
-        store_sparse_index(samples_hash, query_sparse_index, encoding_query = True)
+        
+        if args.add_sparse_index:
+            store_sparse_index(samples_hash, query_sparse_index, encoding_query = True)
             # text_emb_ls = text_retrieval_model.model.encode_queries(queries, convert_to_tensor=True)
     
-        run_search_with_sparse_index(samples_hash)
+            run_search_with_sparse_index(samples_hash)
         # sparse_sim_scores = read_trec_run(samples_hash, len(queries), len(corpus))
     
     # retrieve_by_full_query(img_emb, text_emb_ls)
@@ -422,17 +432,22 @@ if __name__ == "__main__":
             text_emb_ls = [[torch.cat(item) for item in items] for items in text_emb_ls]
     
     # if args.query_concept:
-    if not args.img_concept:
-        if not args.search_by_cluster:
-            results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
+    if args.retrieval_method == "ours":
+        if not args.img_concept:
+            if not args.search_by_cluster:
+                results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
+            else:
+                results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
         else:
-            results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
-    else:
-        
-        if not args.search_by_cluster:
-            results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
-        else:
-            results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
+            
+            if not args.search_by_cluster:
+                results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
+            else:
+                results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
+    elif args.retrieval_method == "llm_ranker":
+        ranker = LLM_ranker(corpus)
+        results = ranker.retrieval(queries)
+        ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values, ignore_identical_ids=False)
     
     final_res_file_name = utils.get_final_res_file_name(args, patch_count_ls)
     print("The results are stored at ", final_res_file_name)
