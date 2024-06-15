@@ -7,3 +7,4 @@ from .unicoil import UniCOIL
 from .splade import SPLADE
 from .tldr import TLDR
 from .clip_model import clip_model
+from .ms_phi import ms_phi

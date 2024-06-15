@@ -7,13 +7,23 @@ import logging
 from datasets import Dataset
 from tqdm import tqdm
 import torch
+from transformers import DistilBertTokenizer, DistilBertForMaskedLM
 
 
 logger = logging.getLogger(__name__)
 
 
+def obtain_model_tokens(embeddings, vocab_model):
+    prediction_logits = vocab_model.vocab_transform(embeddings)
+    prediction_logits = vocab_model.activation(prediction_logits)
+    prediction_logits = vocab_model.vocab_layer_norm(prediction_logits)
+    prediction_logits = vocab_model.vocab_projector(prediction_logits)
+    # next_token_logits = logits[batch_ids, sequence_lengths]
+    prediction_logits = torch.log(1 + torch.relu(prediction_logits))
+    return prediction_logits
+
 class SentenceBERT:
-    def __init__(self, model_path: Union[str, Tuple] = None, sep: str = " ", **kwargs):
+    def __init__(self, model_path: Union[str, Tuple] = None, sep: str = " ", prefix="", suffix="", **kwargs):
         self.sep = sep
         
         if isinstance(model_path, str):
@@ -23,6 +33,12 @@ class SentenceBERT:
         elif isinstance(model_path, tuple):
             self.q_model = SentenceTransformer(model_path[0])
             self.doc_model = SentenceTransformer(model_path[1])
+        model_name = "distilbert-base-uncased"
+
+        self.vocab_model = DistilBertForMaskedLM.from_pretrained(model_name).to("cuda")
+        self.vocab_model.eval()
+        self.prefix=prefix
+        self.suffix=suffix
     
     def start_multi_process_pool(self, target_devices: List[str] = None) -> Dict[str, object]:
         logger.info("Start multi-process pool on devices: {}".format(', '.join(map(str, target_devices))))
@@ -44,17 +60,29 @@ class SentenceBERT:
         [output_queue.get() for _ in range(len(pool['processes']))]
         return self.doc_model.stop_multi_process_pool(pool)
 
-    def encode_queries(self, queries: List[str], batch_size: int = 16, **kwargs) -> Union[List[Tensor], np.ndarray, Tensor]:
+    def encode_queries(self, queries: List[str], batch_size: int = 16, is_sparse=False, **kwargs) -> Union[List[Tensor], np.ndarray, Tensor]:
         if type(queries) is dict:
             queries = [queries[str(i+1)] for i in range(len(queries))]
-        return self.q_model.encode(queries, batch_size=batch_size, **kwargs)
+        if is_sparse:
+            queries = [self.prefix + s + self.suffix for s in queries]
+        
+        q_embs = self.q_model.encode(queries, batch_size=batch_size, **kwargs)
+        if is_sparse:
+            q_embs = obtain_model_tokens(q_embs, self.vocab_model)
+        return q_embs
     
-    def encode_corpus(self, corpus: Union[List[Dict[str, str]], Dict[str, List]], batch_size: int = 8, **kwargs) -> Union[List[Tensor], np.ndarray, Tensor]:
+    def encode_corpus(self, corpus: Union[List[Dict[str, str]], Dict[str, List]], batch_size: int = 8, is_sparse=False, **kwargs) -> Union[List[Tensor], np.ndarray, Tensor]:
         if type(corpus) is dict:
             sentences = [(corpus["title"][i] + self.sep + corpus["text"][i]).strip() if "title" in corpus else corpus["text"][i].strip() for i in range(len(corpus['text']))]
         else:
             sentences = [(doc["title"] + self.sep + doc["text"]).strip() if "title" in doc else doc["text"].strip() for doc in corpus]
-        return self.doc_model.encode(sentences, batch_size=batch_size, **kwargs)
+        if is_sparse:
+            sentences = [self.prefix + s + self.suffix for s in sentences]
+        
+        doc_embs = self.doc_model.encode(sentences, batch_size=batch_size, **kwargs)
+        if is_sparse:
+            doc_embs = obtain_model_tokens(doc_embs, self.vocab_model)
+        return doc_embs
 
     def convert_corpus_to_ls(self, corpus):
         if type(corpus) is dict:
@@ -79,8 +107,10 @@ class SentenceBERT:
         input_queue = pool['input']
         input_queue.put([chunk_id, batch_size, sentences])
         
-    def encode_str_ls(self, str_ls, batch_size=8, **kwargs):
+    def encode_str_ls(self, str_ls, batch_size=8, is_sparse=False, **kwargs):
         # text_feature_ls = []
+        # if is_sparse:
+        #     str_ls = [self.prefix + s + self.suffix for s in str_ls]
         with torch.no_grad():
             text_feature_ls = self.doc_model.encode(str_ls, batch_size=batch_size, **kwargs)
             # for sentence in tqdm(str_ls):

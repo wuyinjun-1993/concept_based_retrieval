@@ -21,7 +21,7 @@ import copy
 import os, shutil
 from bbox_utils import *
 from utils import *
-
+from sparse_index import *
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco"]
 text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco"]
@@ -166,17 +166,29 @@ if __name__ == "__main__":
         processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
         text_processor =  lambda text: raw_processor(text=[text], return_tensors="pt", padding=True, truncation=True)
         img_processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
+        model = model.eval()
     elif args.model_name == "blip":
         from lavis.models import load_model_and_preprocess
         model, vis_processors, txt_processors = load_model_and_preprocess(name="blip_feature_extractor", model_type="base", is_eval=True, device=device)
         text_processor = lambda text: txt_processors["eval"](text)
         
-    model = model.eval()
+        model = model.eval()
     # if args.dataset_name not in image_retrieval_datasets:
     if not args.is_img_retrieval:
         # text_model = models.clip_model(text_processor, model, device)
-        text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b")
-        text_retrieval_model = DRES(text_model, batch_size=16)
+        if args.model_name == "default":
+            text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b", prefix = sparse_prefix, suffix=sparse_suffix)
+        elif args.model_name == "phi":
+            text_model = models.ms_phi(prefix=sparse_prefix, suffix=sparse_suffix)
+        else:
+            raise ValueError("Invalid model name")
+        # text_model = AutoModelForCausalLM.from_pretrained(
+        #             "microsoft/Phi-3-mini-4k-instruct", 
+        #             device_map="cuda", 
+        #             torch_dtype="auto", 
+        #             trust_remote_code=True, 
+        #         )
+        text_retrieval_model = DRES(batch_size=16)
         # retriever = EvaluateRetrieval(text_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
 
         # text_processor = AutoProcessor.from_pretrained("sentence-transformers/msmarco-distilbert-base-tas-b")
@@ -316,7 +328,8 @@ if __name__ == "__main__":
         
 
     elif args.dataset_name in text_retrieval_datasets:
-        samples_hash,img_emb, patch_emb_ls, bboxes_ls = convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_count_ls=patch_count_ls)
+        samples_hash,(img_emb, img_sparse_index), patch_emb_ls, bboxes_ls = convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_count_ls=patch_count_ls)
+        
         # img_emb = text_model.encode_corpus(corpus)
         # if args.img_concept:
         #     _,img_per_patch_ls, patch_emb_ls = generate_patch_ids_ls(patch_emb_ls)
@@ -355,7 +368,7 @@ if __name__ == "__main__":
     
         # else:
         #     patch_emb_by_img_ls = reformat_patch_embeddings_txt(patch_emb_ls, img_emb)
-    
+    sparse_sim_scores = None
     if args.is_img_retrieval:
         if args.query_concept:
             # if not args.dataset_name.startswith("crepe"):
@@ -376,11 +389,20 @@ if __name__ == "__main__":
                 text_emb_ls = embed_queries_with_input_queries(queries, text_processor, model, device)
     else:
         if not args.query_concept:
-            text_emb_ls = text_retrieval_model.model.encode_queries(queries, convert_to_tensor=True)
-        
+            # text_emb_ls = text_model.encode_queries(queries, convert_to_tensor=True)
+            text_emb_ls, query_sparse_index = construct_dense_or_sparse_encodings_queries(queries, text_model)
+                    
         else:
-            text_emb_ls = encode_sub_queries_ls(sub_queries_ls, text_retrieval_model.model)
+            _, query_sparse_index = construct_dense_or_sparse_encodings_queries(queries, text_model)
+            full_sub_queries_ls = sub_queries_ls
+            full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
+            text_emb_ls = encode_sub_queries_ls(full_sub_queries_ls, text_model)
+            
+        store_sparse_index(samples_hash, query_sparse_index, encoding_query = True)
             # text_emb_ls = text_retrieval_model.model.encode_queries(queries, convert_to_tensor=True)
+    
+        run_search_with_sparse_index(samples_hash)
+        # sparse_sim_scores = read_trec_run(samples_hash, len(queries), len(corpus))
     
     # retrieve_by_full_query(img_emb, text_emb_ls)
     if args.is_img_retrieval:
@@ -390,7 +412,7 @@ if __name__ == "__main__":
             qrels = construct_qrels(queries, cached_img_ls, img_idx_ls, query_count=args.query_count)
     
     # if args.is_img_retrieval:
-    retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=args.is_img_retrieval, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
+    retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=args.is_img_retrieval, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
     # else:
     #     retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=one)
     retriever = EvaluateRetrieval(retrieval_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
@@ -402,15 +424,15 @@ if __name__ == "__main__":
     # if args.query_concept:
     if not args.img_concept:
         if not args.search_by_cluster:
-            results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk)
+            results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
         else:
-            results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk)
+            results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
     else:
         
         if not args.search_by_cluster:
-            results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk)
+            results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
         else:
-            results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk)
+            results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
     
     final_res_file_name = utils.get_final_res_file_name(args, patch_count_ls)
     print("The results are stored at ", final_res_file_name)

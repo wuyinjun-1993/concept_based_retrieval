@@ -1,1 +1,0 @@
-model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16)
