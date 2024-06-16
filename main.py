@@ -404,8 +404,11 @@ if __name__ == "__main__":
         else:
             _, query_sparse_index = construct_dense_or_sparse_encodings_queries(queries, text_model, args.add_sparse_index)
             full_sub_queries_ls = sub_queries_ls
-            full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
+            # full_sub_queries_ls = [sub_queries_ls[idx] + [[reformated_queries[idx]]] for idx in range(len(sub_queries_ls))]
             text_emb_ls = encode_sub_queries_ls(full_sub_queries_ls, text_model)
+            text_emb_dense = text_model.encode_queries(queries, convert_to_tensor=True)
+            text_emb_ls = [text_emb_ls[idx] + [text_emb_dense[idx].unsqueeze(0)] for idx in range(len(text_emb_ls))]
+            
         
         if args.add_sparse_index:
             store_sparse_index(samples_hash, query_sparse_index, encoding_query = True)
