@@ -42,6 +42,27 @@ def prompt_crepe_training():
     # print(prompt_training)
     return prompt_training
 
+
+def prompt_trec_covid_training():
+    prompt_training = "You are a query decomposition assistant. Please decompose one long query Q into semantic keyword groups, separated by commas. \
+        Special note: According to the semantics, the keyword groups should be phrases that contain complete meanings, and should not be individual words as much as possible.\
+    each of which includes the positional information phrase of the objects. The decomposition requirements are to ensure that each sub-query after decomposition \
+    Q: \"how does the coronavirus respond to changes in the weather\", \
+    A: \"coronavirus respond to changes, changes in the weather\", \
+    Q: \"what causes death from Covid-19?\", \
+    A: \"causes of death, death from Covid-19\", \
+    Q: \"what are the guidelines for triaging patients infected with coronavirus?\", \
+    A: \"guidelines for triaging patients, infected with coronavirus\", \
+    Q: \"what kinds of complications related to COVID-19 are associated with hypertension?\", \
+    A: \"what complications, complications related to COVID-19, complications associated with hypertension\", \
+    Q: \"what are the health outcomes for children who contract COVID-19?\", \
+    A: \"health outcomes for children, children who contract COVID-19\", \
+    "
+
+    # print(prompt_training)
+    return prompt_training
+
+
 def prompt_flickr_training_two():
     prompt_training = "You are a query decomposition assistant. Please decompose one long query Q into semantically coherent sub-queries, \
     each of which comprises of a phrase including one subject and its action and optionally one object. The decomposition requirements are to ensure that each sub-query after decomposition \
@@ -105,12 +126,37 @@ def prompt_crepe_testing(query = None):
     
     return prompt_inferring_test
 
+
+def prompt_trec_covid_testing(query = None):
+    prompt_inferring_test = " The Q&A example display is complete. Please provide the decomposition result for the following Q; The output format should be: for each Q, \
+    reply with one line for all decomposed sub-queries which are seperated by the vertical line. \n "
+    #reply with multiple lines for all decomposed sub-queries in which each line contains one sub-query " \"|\" "\
+    
+
+    # "\"A=decomposed sentence\", without outputting the original Q sentence, and without any blank lines between the lines. "
+
+    # input for testing
+    Q7 = "Q = \"what are the health outcomes for children who contract COVID-19?\" \n"
+    if query is None:
+        query = Q7
+
+    # prompt_inferring = 'Give the answer : Q: "%s", Q: "%s" (only give the A of each Q divided by &&)' % (Q5, Q6)
+    prompt_inferring_test = prompt_inferring_test + query # + Q8 + Q9 + Q10
+    
+    return prompt_inferring_test
+
+
 def prompt_crepe(query=None):
     prompt_training = prompt_crepe_training()
     prompt_inferring_test = prompt_crepe_testing(query=query)
     prompt_test = prompt_training + prompt_inferring_test
     return prompt_test
 
+def prompt_trec_covid(query=None):
+    prompt_training = prompt_trec_covid_training()
+    prompt_inferring_test = prompt_trec_covid_testing(query=query)
+    prompt_test = prompt_training + prompt_inferring_test
+    return prompt_test
 
 
 
@@ -210,6 +256,9 @@ def obtain_response_from_openai(dataset_name="crepe", query=None):
         prompt_test = prompt_flickr(query=query)
     elif dataset_name == "flickr_two":
         prompt_test = prompt_flickr_two(query=query)
+
+    elif dataset_name == "trec-covid":
+        prompt_test = prompt_trec_covid(query=query)
 
     response = obtain_response_from_gpt_utils(prompt_test)
 
