@@ -256,8 +256,8 @@ if __name__ == "__main__":
         data_path = util.download_and_unzip(url, full_data_path)
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
         
-        queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_subs.jsonl"), subset_img_id=args.subset_img_id)
-        
+        # queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_subs.jsonl"), subset_img_id=args.subset_img_id)
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path)
         print(sub_queries_ls)
         
         subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"

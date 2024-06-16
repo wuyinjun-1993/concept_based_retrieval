@@ -5,8 +5,9 @@ from tqdm import tqdm
 
 import re
 import json
-from retrieval_utils import decompose_single_query_parition_groups
+from retrieval_utils import decompose_single_query_parition_groups, decompose_single_query_ls
 from sparse_index import construct_sparse_index, store_sparse_index
+from LLM4split.prompt_utils import obtain_response_from_openai
 sparse_prefix='<s><|system|>\\nYou are an AI assistant that can understand human language.<|end|>\\n<|user|>\\nQuery: "'
 sparse_suffix='". Use one most important word to represent the query in retrieval task. Make sure your word is in lowercase.<|end|>\\n<|assistant|>\\nThe word is: "'
 
@@ -323,6 +324,25 @@ def reformat_patch_embeddings_txt(patch_emb_ls, img_emb):
         # cosin_sim_ls.append(cosin_sim)
         patch_emb_curr_img_ls.append(patch_emb_curr_img)
     return patch_emb_curr_img_ls
+
+
+def decompose_queries_into_sub_queries(queries, data_path):
+    sub_query_file_name = os.path.join(data_path, "sub_queries.json")
+    if os.path.exists(sub_query_file_name):
+        sub_queries = utils.load(sub_query_file_name)
+    
+    else:
+        sub_queries = dict()
+        
+        for qid in queries:
+            query = queries[qid]
+            sub_caption_str=obtain_response_from_openai(query=query)
+            sub_captions = decompose_single_query_ls(sub_caption_str)
+            sub_queries[qid] = sub_captions
+    
+    idx_to_rid = {str(i+1): str(i+1) for i in range(len(queries))}
+    
+    return sub_queries, idx_to_rid
 
 
 def read_queries_with_sub_queries_file(filename, subset_img_id=None):

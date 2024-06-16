@@ -322,7 +322,8 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=F
     
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6.csv")
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
-    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output.csv")
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output.csv")
+    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output_with_dependency3.csv")
 
     with open("prod_hard_negatives/selected_img_id_ls", "rb") as f:
         selected_img_id_ls = pickle.load(f)
@@ -376,11 +377,11 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=F
         else:
             sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
             
-            # sub_caption_str = sub_caption_str.strip()
-            # if sub_caption_str[-1] == "|":
-            #     sub_caption_str = sub_caption_str[:-1]
-            # if sub_caption_str[-2] == "|":
-            #     sub_caption_str = sub_caption_str[:-2]
+            sub_caption_str = sub_caption_str.strip()
+            if sub_caption_str[-1] == "|":
+                sub_caption_str = sub_caption_str[:-1]
+            if sub_caption_str[-2] == "|":
+                sub_caption_str = sub_caption_str[:-2]
             
             # if not prompt_check_correctness(caption, sub_caption_str):
             #     sub_caption_str = update_decomposed_queries(caption, sub_caption_str)
@@ -389,7 +390,7 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=F
             #     sub_caption_str = sub_caption_str[:-1]
             # if sub_caption_str[-2] == "|":
             #     sub_caption_str = sub_caption_str[:-2]
-            # caption_pd.at[idx, "caption_triples_ls"] = sub_caption_str
+            caption_pd.at[idx, "caption_triples_ls"] = sub_caption_str
 
             
             
@@ -407,7 +408,7 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=F
         img_file_name_ls.append(full_img_file_name)
         all_grouped_sub_q_ids_ls.append(grouped_sub_q_ids_ls)
         
-    img_caption_file_name_output= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output2.csv")
+    img_caption_file_name_output= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output3.csv")
     caption_pd.to_csv(img_caption_file_name_output, index=False)
     # return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls
     if subset_img_id is None:
