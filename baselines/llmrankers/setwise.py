@@ -11,7 +11,7 @@ import tiktoken
 import random
 random.seed(929)
 
-
+import gc
 class SetwiseLlmRanker(LlmRanker):
     CHARACTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
                   "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W"]  # "Passage X" and "Passage Y" will be tokenized into 3 tokens, so we dont use for now
@@ -137,13 +137,13 @@ class SetwiseLlmRanker(LlmRanker):
                         result = result.strip().upper()
                         docids, characters = ref
                         if len(result) != 1 or result not in characters:
-                            print(f"Unexpected output: {result}")
+                            # print(f"Unexpected output: {result}")
                             continue
                         win_doc = docids[characters.index(result)]
                         candidates.append(win_doc)
 
                     if len(candidates) == 0:
-                        print(f"Unexpected voting: {output}")
+                        # print(f"Unexpected voting: {output}")
                         output = "Unexpected voting."
                     else:
                         # handle tie
@@ -171,7 +171,7 @@ class SetwiseLlmRanker(LlmRanker):
                                                temperature=0.0,
                                                top_p=None,
                                                max_new_tokens=5)[0]
-
+                output_ids = output_ids.cpu()
                 self.total_completion_tokens += output_ids.shape[0]
 
                 output = self.tokenizer.decode(output_ids[input_ids.shape[1]:],
@@ -196,8 +196,8 @@ class SetwiseLlmRanker(LlmRanker):
 
         if len(output) == 1 and output in self.CHARACTERS:
             pass
-        else:
-            print(f"Unexpected output: {output}")
+        # else:
+        #     print(f"Unexpected output: {output}")
 
         if len(output) >= 1:
             return output[0]
@@ -229,6 +229,8 @@ class SetwiseLlmRanker(LlmRanker):
         # Build max heap
         for i in range(n // self.num_child, -1, -1):
             self.heapify(arr, n, i, query)
+            gc.collect()
+            torch.cuda.empty_cache()
         for i in range(n - 1, 0, -1):
             # Swap
             arr[i], arr[0] = arr[0], arr[i]
@@ -362,7 +364,7 @@ class OpenAiSetwiseLlmRanker(SetwiseLlmRanker):
                 elif output.strip() in self.CHARACTERS:
                     pass
                 else:
-                    print(f"Unexpected output: {output}")
+                    # print(f"Unexpected output: {output}")
                     output = "A"
                 return output
 

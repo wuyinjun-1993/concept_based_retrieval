@@ -23,6 +23,8 @@ from bbox_utils import *
 from utils import *
 from sparse_index import *
 from baselines.llm_ranker import *
+from derive_sub_query_dependencies import group_dependent_segments_seq_all
+
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco"]
 text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco"]
@@ -275,7 +277,7 @@ if __name__ == "__main__":
         
         origin_corpus = None #copy.copy(corpus)
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
-        grouped_sub_q_ids_ls = [None for _ in range(len(queries))]
+        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path) # [None for _ in range(len(queries))]
         # args.algebra_method=three
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "crepe/"))
         # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "crepe/crepe_captions.txt"))

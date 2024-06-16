@@ -282,8 +282,11 @@ class DenseRetrievalExactSearch:
                         curr_scores = 1
                         
                         if len(sub_corpus_embeddings.shape) == 2 and sub_corpus_embeddings.shape[0] > 1:
-                            if curr_query_embedding.shape[0] == 1 and self.is_img_retrieval:
-                                curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
+                            if curr_query_embedding.shape[0] == 1:
+                                if self.is_img_retrieval:
+                                    curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
+                                else:
+                                    curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
                                 curr_scores = curr_scores_ls
                                 full_curr_scores_ls.append(curr_scores.item())
                                 continue

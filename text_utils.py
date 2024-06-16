@@ -328,9 +328,10 @@ def reformat_patch_embeddings_txt(patch_emb_ls, img_emb):
 
 def decompose_queries_into_sub_queries(queries, data_path):
     sub_query_file_name = os.path.join(data_path, "sub_queries.json")
+    idx_to_rid = {str(i+1): str(i+1) for i in range(len(queries))}
+
     if os.path.exists(sub_query_file_name):
         sub_queries = utils.load(sub_query_file_name)
-    
     else:
         sub_queries = dict()
         
@@ -339,8 +340,8 @@ def decompose_queries_into_sub_queries(queries, data_path):
             sub_caption_str=obtain_response_from_openai(query=query)
             sub_captions = decompose_single_query_ls(sub_caption_str)
             sub_queries[qid] = sub_captions
-    
-    idx_to_rid = {str(i+1): str(i+1) for i in range(len(queries))}
+
+        utils.save(sub_queries, sub_query_file_name)
     
     return sub_queries, idx_to_rid
 
