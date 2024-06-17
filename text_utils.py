@@ -336,18 +336,18 @@ def decompose_queries_into_sub_queries(queries, data_path, query_key_ls=None):
 
     rid_to_idx = {v: k for k, v in idx_to_rid.items()}
 
-    # if os.path.exists(sub_query_file_name):
-    #     sub_queries = utils.load(sub_query_file_name)
-    # else:
-    sub_queries = dict()
-    
-    for qid in query_key_ls:
-        query = queries[qid]
-        sub_caption_str=obtain_response_from_openai(query=query)
-        sub_captions = decompose_single_query_ls(sub_caption_str)
-        sub_queries[rid_to_idx[qid]] = sub_captions
+    if os.path.exists(sub_query_file_name):
+        sub_queries = utils.load(sub_query_file_name)
+    else:
+        sub_queries = dict()
+        
+        for qid in query_key_ls:
+            query = queries[qid]
+            sub_caption_str=obtain_response_from_openai(query=query)
+            sub_captions = decompose_single_query_ls(sub_caption_str)
+            sub_queries[rid_to_idx[qid]] = sub_captions
 
-    utils.save(sub_queries, sub_query_file_name)
+        utils.save(sub_queries, sub_query_file_name)
     
     return sub_queries, idx_to_rid
 
