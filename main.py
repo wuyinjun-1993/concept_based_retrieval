@@ -24,7 +24,7 @@ from utils import *
 from sparse_index import *
 from baselines.llm_ranker import *
 from derive_sub_query_dependencies import group_dependent_segments_seq_all
-
+import random
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco"]
 text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco"]
@@ -99,7 +99,24 @@ def retrieve_by_full_query(img_emb, text_emb_ls):
         # print(scores.argmax())
         # print()
     
-
+def set_rand_seed(seed_value):
+    # Set seed for Python's built-in random module
+    random.seed(seed_value)
+    
+    # Set seed for NumPy
+    np.random.seed(seed_value)
+    
+    # Set seed for PyTorch
+    torch.manual_seed(seed_value)
+    
+    # Set seed for CUDA (if using a GPU)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed_value)
+        torch.cuda.manual_seed_all(seed_value)  # If using multi-GPU.
+    
+    # Ensure deterministic operations for cuDNN
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def parse_args():
@@ -108,6 +125,7 @@ def parse_args():
     parser.add_argument('--dataset_name', type=str, default="crepe", help='config file')
     parser.add_argument('--model_name', type=str, default="default", help='config file')
     parser.add_argument('--query_count', type=int, default=-1, help='config file')
+    parser.add_argument('--random_seed', type=int, default=0, help='config file')
     parser.add_argument('--query_concept', action="store_true", help='config file')
     parser.add_argument('--img_concept', action="store_true", help='config file')
     parser.add_argument('--total_count', type=int, default=500, help='config file')
@@ -158,7 +176,7 @@ if __name__ == "__main__":
 
     args = parse_args()
     args.is_img_retrieval = args.dataset_name in image_retrieval_datasets
-
+    set_rand_seed(args.random_seed)
 
     # args.query_concept = False
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -287,10 +305,14 @@ if __name__ == "__main__":
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
         filter_queries_with_gt(full_data_path, args, queries)
         queries = {key:queries[key] for key in qrels}
-        query_key_ls = list(queries.keys())
-        query_key_ls = sorted(query_key_ls)[0:10]
+        full_query_key_ls = list(queries.keys())
+        query_key_ls = random.sample(full_query_key_ls, 100)
+        query_key_ls = sorted(query_key_ls)
+        print("all query key list::", query_key_ls)
+        query_hash = utils.hashfn(query_key_ls)
+        print("query hash::",query_hash)
         # queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_sub0.jsonl"), subset_img_id=args.subset_img_id)
-        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls)
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path,query_hash=query_hash, query_key_ls=query_key_ls)
         
         print(sub_queries_ls)
         
@@ -310,7 +332,7 @@ if __name__ == "__main__":
         origin_corpus = None #copy.copy(corpus)
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
         # grouped_sub_q_ids_ls = [None for _ in range(len(queries))]
-        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path) # [None for _ in range(len(queries))]
+        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_hash=query_hash) # [None for _ in range(len(queries))]
     
     
     if args.is_img_retrieval:
