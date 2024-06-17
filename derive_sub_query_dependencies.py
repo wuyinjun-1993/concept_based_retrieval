@@ -17,7 +17,7 @@ import utils
 # Settings
 MODEL = "gpt-3.5-turbo"
 OPENAI_SECRET_KEY = os.environ.get("OPENAI_API_KEY") #"sk-proj-X...X"
-MAX_RETRIES = 3  # Maximum number of retries
+MAX_RETRIES = 5  # Maximum number of retries
 BATCH_SIZE = 25
 
 class UnionFind:
@@ -212,6 +212,7 @@ def group_dependent_segments_seq_all(sentence_mappings, segments_mappings, data_
             curr_sub_q_ids_ls = decompose_single_query_parition_groups(segments, curr_sub_q_ids_str)
             # curr_sub_q_ids_ls = decompose_single_query_ls(curr_sub_q_ids_str)
             grouped_sub_q_ids_ls.append(curr_sub_q_ids_ls)
+            time.sleep(30)
         
         utils.save(grouped_sub_q_ids_ls, grouped_sub_q_ids_file)
         
