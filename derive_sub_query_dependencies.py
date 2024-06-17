@@ -193,24 +193,27 @@ def group_dependent_segments_seq(sentence, segments):
     elapsed_time = end_time - start_time  # Calculate elapsed time
     return " | ".join(grouped_indices), elapsed_time
 
-def group_dependent_segments_seq_all(sentence_mappings, segments_mappings, data_path):
+def group_dependent_segments_seq_all(sentence_mappings, segments_mappings, data_path, query_hash=None):
     sentence_ls = [sentence_mappings[str(idx + 1)] for idx in range(len(sentence_mappings))]
     segments_str_ls = ["|".join(segments_mappings[str(idx + 1)][0]) for idx in range(len(segments_mappings))]
     segments_ls = [segments_mappings[str(idx + 1)] for idx in range(len(segments_mappings))]
     
-    grouped_sub_q_ids_file = os.path.join(data_path, "grouped_sub_q_ids_ls.pkl")
-    # if os.path.exists(grouped_sub_q_ids_file):
-    #     grouped_sub_q_ids_ls= utils.load(grouped_sub_q_ids_file)
+    if query_hash is None:
+        grouped_sub_q_ids_file = os.path.join(data_path, "grouped_sub_q_ids_ls.pkl")
+    else:
+        grouped_sub_q_ids_file = os.path.join(data_path, f"grouped_sub_q_ids_ls_{query_hash}.pkl")
+    if os.path.exists(grouped_sub_q_ids_file):
+        grouped_sub_q_ids_ls= utils.load(grouped_sub_q_ids_file)
     
-    # else:
-    grouped_sub_q_ids_ls = []
-    for (sentence, segments, segments_str) in tqdm(zip(sentence_ls, segments_ls, segments_str_ls)):
-        curr_sub_q_ids_str, _ = group_dependent_segments_seq(sentence, segments_str)
-        curr_sub_q_ids_ls = decompose_single_query_parition_groups(segments, curr_sub_q_ids_str)
-        # curr_sub_q_ids_ls = decompose_single_query_ls(curr_sub_q_ids_str)
-        grouped_sub_q_ids_ls.append(curr_sub_q_ids_ls)
-    
-    utils.save(grouped_sub_q_ids_ls, grouped_sub_q_ids_file)
+    else:
+        grouped_sub_q_ids_ls = []
+        for (sentence, segments, segments_str) in tqdm(zip(sentence_ls, segments_ls, segments_str_ls)):
+            curr_sub_q_ids_str, _ = group_dependent_segments_seq(sentence, segments_str)
+            curr_sub_q_ids_ls = decompose_single_query_parition_groups(segments, curr_sub_q_ids_str)
+            # curr_sub_q_ids_ls = decompose_single_query_ls(curr_sub_q_ids_str)
+            grouped_sub_q_ids_ls.append(curr_sub_q_ids_ls)
+        
+        utils.save(grouped_sub_q_ids_ls, grouped_sub_q_ids_file)
         
     return grouped_sub_q_ids_ls
         

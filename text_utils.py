@@ -326,13 +326,18 @@ def reformat_patch_embeddings_txt(patch_emb_ls, img_emb):
     return patch_emb_curr_img_ls
 
 
-def decompose_queries_into_sub_queries(queries, data_path, query_key_ls=None):
-    sub_query_file_name = os.path.join(data_path, "sub_queries.json")
+def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, query_key_ls=None):
+    if query_hash is not None:
+        sub_query_file_name = os.path.join(data_path, f"sub_queries_{query_hash}.json")
+    else:
+        sub_query_file_name = os.path.join(data_path, "sub_queries.json")
     if query_key_ls is None:
         idx_to_rid = {str(i+1): str(i+1) for i in range(len(queries))}
         query_key_ls = [str(i+1) for i in range(len(queries))]
     else:
         idx_to_rid = {str(i+1): query_key_ls[i] for i in range(len(query_key_ls))}
+        
+    
 
     rid_to_idx = {v: k for k, v in idx_to_rid.items()}
 
