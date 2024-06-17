@@ -151,9 +151,9 @@ def construct_dense_or_sparse_encodings(args, corpus, text_model, samples_hash, 
             img_emb = img_emb.cpu()
     else:
         local_bz = 1024
-        bz = 1024
-        if is_sparse or args.model_name == "llm":
-            bz = 32
+        # bz = 1024
+        # if is_sparse or args.model_name == "llm":
+        bz = 32
         for idx in tqdm(range(0, len(corpus), local_bz)):
             end_id = min(idx+local_bz, len(corpus))
             curr_corpus = corpus[idx:end_id]
@@ -326,22 +326,28 @@ def reformat_patch_embeddings_txt(patch_emb_ls, img_emb):
     return patch_emb_curr_img_ls
 
 
-def decompose_queries_into_sub_queries(queries, data_path):
+def decompose_queries_into_sub_queries(queries, data_path, query_key_ls=None):
     sub_query_file_name = os.path.join(data_path, "sub_queries.json")
-    idx_to_rid = {str(i+1): str(i+1) for i in range(len(queries))}
-
-    if os.path.exists(sub_query_file_name):
-        sub_queries = utils.load(sub_query_file_name)
+    if query_key_ls is None:
+        idx_to_rid = {str(i+1): str(i+1) for i in range(len(queries))}
+        query_key_ls = [str(i+1) for i in range(len(queries))]
     else:
-        sub_queries = dict()
-        
-        for qid in queries:
-            query = queries[qid]
-            sub_caption_str=obtain_response_from_openai(query=query)
-            sub_captions = decompose_single_query_ls(sub_caption_str)
-            sub_queries[qid] = sub_captions
+        idx_to_rid = {str(i+1): query_key_ls[i] for i in range(len(query_key_ls))}
 
-        utils.save(sub_queries, sub_query_file_name)
+    rid_to_idx = {v: k for k, v in idx_to_rid.items()}
+
+    # if os.path.exists(sub_query_file_name):
+    #     sub_queries = utils.load(sub_query_file_name)
+    # else:
+    sub_queries = dict()
+    
+    for qid in query_key_ls:
+        query = queries[qid]
+        sub_caption_str=obtain_response_from_openai(query=query)
+        sub_captions = decompose_single_query_ls(sub_caption_str)
+        sub_queries[rid_to_idx[qid]] = sub_captions
+
+    utils.save(sub_queries, sub_query_file_name)
     
     return sub_queries, idx_to_rid
 

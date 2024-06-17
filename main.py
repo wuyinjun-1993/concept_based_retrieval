@@ -286,9 +286,11 @@ if __name__ == "__main__":
         data_path = util.download_and_unzip(url, full_data_path)
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
         filter_queries_with_gt(full_data_path, args, queries)
-        queries = {queries[key] for key in qrels}
-        
-        queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_sub0.jsonl"), subset_img_id=args.subset_img_id)
+        queries = {key:queries[key] for key in qrels}
+        query_key_ls = list(queries.keys())
+        query_key_ls = sorted(query_key_ls)[0:10]
+        # queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_sub0.jsonl"), subset_img_id=args.subset_img_id)
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls)
         
         print(sub_queries_ls)
         
@@ -300,14 +302,15 @@ if __name__ == "__main__":
             utils.save((corpus, qrels), subset_file_name)
         
         qrels = {key: qrels[idx_to_rid[key]] for key in sub_queries_ls if not check_empty_mappings(qrels[idx_to_rid[key]]) and idx_to_rid[key] in qrels}
-        
+        queries = {key: queries[idx_to_rid[key]] for key in sub_queries_ls if not check_empty_mappings(qrels[key]) and key in qrels}
         if len(qrels) == 0:
             print("no valid queries, exit!")
             exit(1)
         
         origin_corpus = None #copy.copy(corpus)
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
-        grouped_sub_q_ids_ls = [None for _ in range(len(queries))]
+        # grouped_sub_q_ids_ls = [None for _ in range(len(queries))]
+        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path) # [None for _ in range(len(queries))]
     
     
     if args.is_img_retrieval:
