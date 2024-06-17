@@ -350,7 +350,7 @@ if __name__ == "__main__":
     else:
         print("Invalid dataset name, exit!")
         exit(1)
-    
+    print("sample hash::", samples_hash)
     patch_emb_by_img_ls = patch_emb_ls
     if args.img_concept:
         # if args.is_img_retrieval:
