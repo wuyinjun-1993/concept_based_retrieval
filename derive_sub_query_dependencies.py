@@ -175,6 +175,7 @@ def group_dependent_segments_seq(sentence, segments):
                 result = check_dependency_seq(sentence, segments_list[i], segments_list[j])
                 if result == 1:
                     uf.union(i, j)
+                time.sleep(2)
                 # await asyncio.sleep(2)  # Small delay to avoid hitting limits too quickly
             # else:
             #   print('already in same group')
