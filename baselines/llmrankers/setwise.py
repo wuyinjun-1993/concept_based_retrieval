@@ -9,6 +9,7 @@ import copy
 from collections import Counter
 import tiktoken
 import random
+from tqdm import tqdm
 random.seed(929)
 
 import gc
@@ -227,11 +228,11 @@ class SetwiseLlmRanker(LlmRanker):
         n = len(arr)
         ranked = 0
         # Build max heap
-        for i in range(n // self.num_child, -1, -1):
+        for i in tqdm(range(n // self.num_child, -1, -1), desc="Building heap"):
             self.heapify(arr, n, i, query)
             gc.collect()
             torch.cuda.empty_cache()
-        for i in range(n - 1, 0, -1):
+        for i in tqdm(range(n - 1, 0, -1), desc="Sorting"):
             # Swap
             arr[i], arr[0] = arr[0], arr[i]
             ranked += 1
