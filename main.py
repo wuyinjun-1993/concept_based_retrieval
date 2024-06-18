@@ -300,7 +300,7 @@ if __name__ == "__main__":
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
         full_query_key_ls = [str(idx + 1) for idx in range(len(queries))]
         try:
-            queries= read_queries_from_file(os.path.join(full_data_path, "queries2.jsonl")) #, subset_img_id=args.subset_img_id)
+            queries= read_queries_from_file(os.path.join(full_data_path, "queries.jsonl")) #, subset_img_id=args.subset_img_id)
         except:
             pass
         query_key_ls = list(queries.keys())
