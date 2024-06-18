@@ -156,17 +156,31 @@ def print_memory_usage():
     print(f"Memory usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
 
 
-def construct_qrels(filename_ls, cached_img_idx, img_idx_ls, query_count):
+def construct_qrels(queries, cached_img_idx, img_idx_ls, query_count):
     qrels = {}
-    if query_count < 0:
-        query_count = len(filename_ls)
+    # if query_count < 0:
+    #     query_count = 
     
-    for idx in range(query_count):
+    for idx in range(len(queries)):
         curr_img_idx = img_idx_ls[idx]
         cached_idx = cached_img_idx.index(curr_img_idx)
         qrels[str(idx+1)] = {str(cached_idx+1): 2}
+    q_idx_ls = list(range(len(queries)))
+    if query_count > 0:
+        
+        subset_q_idx_ls = random.sample(q_idx_ls, query_count)
+        
+        subset_q_idx_ls = sorted(subset_q_idx_ls)
+        
+        subset_qrels = {str(key_id + 1): qrels[str(subset_q_idx_ls[key_id] + 1)] for key_id in range(len(subset_q_idx_ls))}
     
-    return qrels
+        qrels = subset_qrels
+        
+        queries = [queries[idx] for idx in subset_q_idx_ls]
+    else:
+        subset_q_idx_ls = q_idx_ls #list(qrels.keys())
+        
+    return qrels, queries, q_idx_ls
 
 if __name__ == "__main__":       
     logging.basicConfig(format='%(asctime)s - %(message)s',
@@ -182,23 +196,25 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # processor = ViTImageProcessor.from_pretrained('google/vit-large-patch16-224')
     # model = ViTForImageClassification.from_pretrained('google/vit-large-patch16-224').to(device)
-    if args.model_name == "default":
-        model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14").to(device)
-        # processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
-        raw_processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
-        # processor =  lambda images: raw_processor(images=images, return_tensors="pt", padding=False, do_resize=False, do_center_crop=False)["pixel_values"]
-        processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
-        text_processor =  lambda text: raw_processor(text=[text], return_tensors="pt", padding=True, truncation=True)
-        img_processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
-        model = model.eval()
-    elif args.model_name == "blip":
-        from lavis.models import load_model_and_preprocess
-        model, vis_processors, txt_processors = load_model_and_preprocess(name="blip_feature_extractor", model_type="base", is_eval=True, device=device)
-        text_processor = lambda text: txt_processors["eval"](text)
+    if args.is_img_retrieval:
+        if args.model_name == "default":
+            model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14").to(device)
+            # processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
+            raw_processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
+            # processor =  lambda images: raw_processor(images=images, return_tensors="pt", padding=False, do_resize=False, do_center_crop=False)["pixel_values"]
+            processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
+            text_processor =  lambda text: raw_processor(text=[text], return_tensors="pt", padding=True, truncation=True)
+            img_processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
+            model = model.eval()
+        elif args.model_name == "blip":
+            from lavis.models import load_model_and_preprocess
+            model, vis_processors, txt_processors = load_model_and_preprocess(name="blip_feature_extractor", model_type="base", is_eval=True, device=device)
+            text_processor = lambda text: txt_processors["eval"](text)
         
         model = model.eval()
-    # if args.dataset_name not in image_retrieval_datasets:
-    if not args.is_img_retrieval:
+    else:
+        # if args.dataset_name not in image_retrieval_datasets:
+        # if not args.is_img_retrieval:
         # text_model = models.clip_model(text_processor, model, device)
         if args.model_name == "default":
             print("start loading distill-bert model")
@@ -224,7 +240,7 @@ if __name__ == "__main__":
         # text_processor = AutoProcessor.from_pretrained("sentence-transformers/msmarco-distilbert-base-tas-b")
         # model = models.SentenceBERT("msmarco-distilbert-base-tas-b")
         # model = model.eval()
-    
+
     
     full_data_path = os.path.join(args.data_path, args.dataset_name)
     if args.dataset_name.startswith("crepe"):
@@ -413,6 +429,16 @@ if __name__ == "__main__":
         #     patch_emb_by_img_ls = reformat_patch_embeddings_txt(patch_emb_ls, img_emb)
     sparse_sim_scores = None
     if args.is_img_retrieval:
+        # if args.dataset_name == "flickr":
+        #     qrels = construct_qrels(filename_ls, query_count=args.query_count)
+        # else:
+            qrels, queries, subset_q_idx = construct_qrels(queries, cached_img_ls, img_idx_ls, query_count=args.query_count)
+            sub_queries_ls = [sub_queries_ls[idx] for idx in subset_q_idx]
+            print("qrels::", qrels)
+    
+    
+    
+    if args.is_img_retrieval:
         if args.query_concept:
             # if not args.dataset_name.startswith("crepe"):
             #     queries = [filename_cap_mappings[file] for file in filename_ls]
@@ -452,11 +478,6 @@ if __name__ == "__main__":
         # sparse_sim_scores = read_trec_run(samples_hash, len(queries), len(corpus))
     
     # retrieve_by_full_query(img_emb, text_emb_ls)
-    if args.is_img_retrieval:
-        # if args.dataset_name == "flickr":
-        #     qrels = construct_qrels(filename_ls, query_count=args.query_count)
-        # else:
-            qrels = construct_qrels(queries, cached_img_ls, img_idx_ls, query_count=args.query_count)
     
     # if args.is_img_retrieval:
     retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=args.is_img_retrieval, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
