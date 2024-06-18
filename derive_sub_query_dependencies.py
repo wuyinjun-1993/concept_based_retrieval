@@ -12,7 +12,7 @@ nest_asyncio.apply()
 import requests
 from retrieval_utils import decompose_single_query_parition_groups
 import utils
-
+import json
 
 # Settings
 MODEL = "gpt-3.5-turbo"
@@ -201,10 +201,16 @@ def group_dependent_segments_seq_all(sentence_mappings, segments_mappings, data_
     
     if query_hash is None:
         grouped_sub_q_ids_file = os.path.join(data_path, "grouped_sub_q_ids_ls.pkl")
+        grouped_sub_q_ids_json_file = os.path.join(data_path, "grouped_sub_q_ids_ls.json")
     else:
         grouped_sub_q_ids_file = os.path.join(data_path, f"grouped_sub_q_ids_ls_{query_hash}.pkl")
+        grouped_sub_q_ids_json_file = os.path.join(data_path, f"grouped_sub_q_ids_ls_{query_hash}.json")
     if os.path.exists(grouped_sub_q_ids_file):
-        grouped_sub_q_ids_ls= utils.load(grouped_sub_q_ids_file)
+        try:
+            grouped_sub_q_ids_ls = json.load(open(grouped_sub_q_ids_json_file, 'r'))
+        except:
+            grouped_sub_q_ids_ls= utils.load(grouped_sub_q_ids_file)
+            json.dump(grouped_sub_q_ids_ls, open(grouped_sub_q_ids_json_file, 'w'))
     
     else:
         grouped_sub_q_ids_ls = []
