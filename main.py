@@ -180,7 +180,7 @@ def construct_qrels(queries, cached_img_idx, img_idx_ls, query_count):
     else:
         subset_q_idx_ls = q_idx_ls #list(qrels.keys())
         
-    return qrels, queries, q_idx_ls
+    return qrels, queries, subset_q_idx_ls
 
 if __name__ == "__main__":       
     logging.basicConfig(format='%(asctime)s - %(message)s',
@@ -433,7 +433,10 @@ if __name__ == "__main__":
         #     qrels = construct_qrels(filename_ls, query_count=args.query_count)
         # else:
             qrels, queries, subset_q_idx = construct_qrels(queries, cached_img_ls, img_idx_ls, query_count=args.query_count)
-            sub_queries_ls = [sub_queries_ls[idx] for idx in subset_q_idx]
+            if args.query_count > 0:
+                sub_queries_ls = [sub_queries_ls[idx] for idx in subset_q_idx]
+                grouped_sub_q_ids_ls = [grouped_sub_q_ids_ls[idx] for idx in subset_q_idx]
+            print("sub_q_index::", subset_q_idx)
             print("qrels::", qrels)
     
     
