@@ -485,7 +485,7 @@ if __name__ == "__main__":
             # text_emb_ls = text_retrieval_model.model.encode_queries(queries, convert_to_tensor=True)
     
             run_search_with_sparse_index(samples_hash)
-        # sparse_sim_scores = read_trec_run(samples_hash, len(queries), len(corpus))
+            sparse_sim_scores = read_trec_run(samples_hash, len(queries), len(corpus))
     
     # retrieve_by_full_query(img_emb, text_emb_ls)
     
