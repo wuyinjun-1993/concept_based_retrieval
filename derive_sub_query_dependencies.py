@@ -194,7 +194,7 @@ def group_dependent_segments_seq(sentence, segments):
     elapsed_time = end_time - start_time  # Calculate elapsed time
     return " | ".join(grouped_indices), elapsed_time
 
-def group_dependent_segments_seq_all(sentence_mappings, segments_mappings, data_path, query_hash=None, query_key_idx_ls=None, query_key_ls=None):
+def group_dependent_segments_seq_all(sentence_mappings, segments_mappings, data_path, query_key_idx_ls=None, query_key_ls=None, query_hash=None):
     if query_key_ls is None:
         sentence_ls = [sentence_mappings[str(idx + 1)] for idx in range(len(sentence_mappings))]
         segments_str_ls = ["|".join(segments_mappings[str(idx + 1)][0]) for idx in range(len(segments_mappings))]
