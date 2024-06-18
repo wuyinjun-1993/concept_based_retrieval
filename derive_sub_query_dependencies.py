@@ -194,10 +194,15 @@ def group_dependent_segments_seq(sentence, segments):
     elapsed_time = end_time - start_time  # Calculate elapsed time
     return " | ".join(grouped_indices), elapsed_time
 
-def group_dependent_segments_seq_all(sentence_mappings, segments_mappings, data_path, query_hash=None):
-    sentence_ls = [sentence_mappings[str(idx + 1)] for idx in range(len(sentence_mappings))]
-    segments_str_ls = ["|".join(segments_mappings[str(idx + 1)][0]) for idx in range(len(segments_mappings))]
-    segments_ls = [segments_mappings[str(idx + 1)] for idx in range(len(segments_mappings))]
+def group_dependent_segments_seq_all(sentence_mappings, segments_mappings, data_path, query_hash=None, query_key_idx_ls=None, query_key_ls=None):
+    if query_key_ls is None:
+        sentence_ls = [sentence_mappings[str(idx + 1)] for idx in range(len(sentence_mappings))]
+        segments_str_ls = ["|".join(segments_mappings[str(idx + 1)][0]) for idx in range(len(segments_mappings))]
+        segments_ls = [segments_mappings[str(idx + 1)] for idx in range(len(segments_mappings))]
+    else:
+        sentence_ls = [sentence_mappings[key] for key in query_key_ls]
+        segments_str_ls = ["|".join(segments_mappings[str(idx + 1)][0]) for idx in range(len(segments_mappings))]
+        segments_ls = [segments_mappings[str(idx + 1)] for idx in range(len(segments_mappings))]
     
     if query_hash is None:
         grouped_sub_q_ids_file = os.path.join(data_path, "grouped_sub_q_ids_ls.pkl")
@@ -211,7 +216,8 @@ def group_dependent_segments_seq_all(sentence_mappings, segments_mappings, data_
         except:
             grouped_sub_q_ids_ls= utils.load(grouped_sub_q_ids_file)
             json.dump(grouped_sub_q_ids_ls, open(grouped_sub_q_ids_json_file, 'w'))
-    
+        if query_key_idx_ls is not None:
+            grouped_sub_q_ids_ls = [grouped_sub_q_ids_ls[idx] for idx in query_key_idx_ls]
     else:
         grouped_sub_q_ids_ls = []
         for (sentence, segments, segments_str) in tqdm(zip(sentence_ls, segments_ls, segments_str_ls)):

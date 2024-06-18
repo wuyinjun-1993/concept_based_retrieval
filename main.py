@@ -298,9 +298,15 @@ if __name__ == "__main__":
         url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(args.dataset_name)
         data_path = util.download_and_unzip(url, full_data_path)
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
-        
-        # queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_subs.jsonl"), subset_img_id=args.subset_img_id)
-        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path)
+        full_query_key_ls = [str(idx + 1) for idx in range(len(queries))]
+        try:
+            queries= read_queries_from_file(os.path.join(full_data_path, "queries2.jsonl")) #, subset_img_id=args.subset_img_id)
+        except:
+            pass
+        query_key_ls = list(queries.keys())
+        # query_key_ls = random.sample(full_query_key_ls, 100)
+        query_key_ls = sorted(query_key_ls)
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls)
         print(sub_queries_ls)
         
         subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
@@ -318,8 +324,10 @@ if __name__ == "__main__":
         
         origin_corpus = None #copy.copy(corpus)
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
-        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path) # [None for _ in range(len(queries))]
+        query_key_idx_ls = [full_query_key_ls.index(key) for key in query_key_ls]
+        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_key_idx_ls, query_key_ls=query_key_ls) # [None for _ in range(len(queries))]
         # args.algebra_method=three
+        queries = [queries[key] for key in query_key_ls]
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "crepe/"))
         # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "crepe/crepe_captions.txt"))
     elif args.dataset_name == "hotpotqa":
@@ -356,7 +364,6 @@ if __name__ == "__main__":
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
         # grouped_sub_q_ids_ls = [None for _ in range(len(queries))]
         grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_hash=query_hash) # [None for _ in range(len(queries))]
-    
     
     if args.is_img_retrieval:
         # if not args.query_concept:    
