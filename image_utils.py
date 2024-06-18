@@ -290,6 +290,50 @@ def load_sharegpt4v_datasets(data_path, query_path):
     return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls
 
 
+def load_mscoco_datasets_from_cached_files(data_path, query_path):
+    # img_caption_file_name = query_path
+    # with open(img_caption_file_name, 'rb') as f:
+    # caption_pd = pickle.load(f)
+    
+    caption_pd = utils.load(os.path.join(query_path, "mscoco_40kdecomposed_dependencies_wholeexp.pkl"))
+    
+    # caption_pd = pd.read_csv(os.path.join(query_path, "sharegpt_query_20.csv"))
+    img_file_name_ls = []
+    img_idx_ls = []
+    caption_ls = []
+    sub_caption_ls = []
+    all_grouped_sub_q_ids_ls = []
+    # if 'caption_triples_ls' not in caption_pd.columns:
+    #     caption_pd['caption_triples_ls'] = np.nan
+    # if "groups" not in caption_pd.columns:
+    #    caption_pd['groups'] = np.nan 
+    for idx in tqdm(range(len(caption_pd))):
+        image_idx = caption_pd.iloc[idx]['id']
+        if image_idx in img_idx_ls:
+            continue
+
+        img_path = caption_pd.iloc[idx]['image']
+        #image_dir is the directory in which the root folder for the main image files are located, in this case in train2017 folder
+        # image_dir = '/content/unzipped_images/train2017/train2017/'
+        img_final_path = os.path.join(data_path, "images/train2017/", img_path)
+        caption = caption_pd.iloc[idx]['caption_sharegpt4v']
+        sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
+        sub_captions = decompose_single_query_ls(sub_caption_str)
+        
+        
+        query_paritions_str = caption_pd.iloc[idx]['groups']
+        grouped_sub_q_ids_ls = decompose_single_query_parition_groups(sub_captions, query_paritions_str)
+        
+        
+        img_file_name_ls.append(img_final_path)
+        img_idx_ls.append(image_idx)
+        caption_ls.append(caption)
+        sub_caption_ls.append(sub_captions)
+        all_grouped_sub_q_ids_ls.append(grouped_sub_q_ids_ls)
+    return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
+
+
+
 def load_other_sharegpt4v_mscoco_images(dataset_path, img_idx_ls, img_file_name_ls, total_count):
     #query_path = '/content/drive/MyDrive/'
     #img_caption_file_name = os.path.join(query_path, "sharegpt4v_mscoco_image_paths.pkl")

@@ -26,7 +26,7 @@ from baselines.llm_ranker import *
 from derive_sub_query_dependencies import group_dependent_segments_seq_all
 import random
 
-image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco"]
+image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco", "mscoco_40k"]
 text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco"]
 
 
@@ -201,6 +201,7 @@ if __name__ == "__main__":
     if not args.is_img_retrieval:
         # text_model = models.clip_model(text_processor, model, device)
         if args.model_name == "default":
+            print("start loading distill-bert model")
             text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b", prefix = sparse_prefix, suffix=sparse_suffix)
         # elif args.model_name == "phi":
         #     text_model = models.ms_phi(prefix=sparse_prefix, suffix=sparse_suffix)
@@ -255,6 +256,12 @@ if __name__ == "__main__":
     elif args.dataset_name == "mscoco":
         queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_sharegpt4v_datasets(full_data_path, full_data_path)
         img_idx_ls, img_file_name_ls = load_other_sharegpt4v_mscoco_images(full_data_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
+    
+    elif args.dataset_name == "mscoco_40k":
+        queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls= load_mscoco_datasets_from_cached_files(full_data_path, full_data_path)
+        
+        # queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_sharegpt4v_datasets(full_data_path, full_data_path)
+        # img_idx_ls, img_file_name_ls = load_other_sharegpt4v_mscoco_images(full_data_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
     
     elif args.dataset_name == "AToMiC":
         load_atom_datasets(full_data_path)
