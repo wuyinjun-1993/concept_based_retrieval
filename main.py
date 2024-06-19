@@ -23,6 +23,7 @@ from bbox_utils import *
 from utils import *
 from sparse_index import *
 from baselines.llm_ranker import *
+from baselines.bm25 import *
 from derive_sub_query_dependencies import group_dependent_segments_seq_all
 import random
 
@@ -270,7 +271,8 @@ if __name__ == "__main__":
         # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "results_20130124.token"))    
         # args.algebra_method=one
     elif args.dataset_name == "mscoco":
-        queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_sharegpt4v_datasets(full_data_path, full_data_path)
+        # queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_sharegpt4v_datasets(full_data_path, full_data_path)
+        queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls=load_mscoco_120k_datasets_from_cached_files(full_data_path, full_data_path)
         img_idx_ls, img_file_name_ls = load_other_sharegpt4v_mscoco_images(full_data_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
     
     elif args.dataset_name == "mscoco_40k":
@@ -374,6 +376,7 @@ if __name__ == "__main__":
                 patch_count_ls = [4, 16, 64]
             elif args.dataset_name.startswith("mscoco"):
                 patch_count_ls = [4, 8, 16, 64, 128]
+                # patch_count_ls = [4, 8, 16, 64]
                 # patch_count_ls = [4, 16, 64]
             else:
                 patch_count_ls = [4, 8, 16, 64]
@@ -512,10 +515,19 @@ if __name__ == "__main__":
                 results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
             else:
                 results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
-    elif args.retrieval_method == "llm_ranker":
-        ranker = LLM_ranker(corpus)
-        results = ranker.retrieval(queries)
+    # elif args.retrieval_method == "llm_ranker":
+    #     ranker = LLM_ranker(corpus)
+    #     results = ranker.retrieval(queries)
+    #     ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values, ignore_identical_ids=False)
+    elif args.retrieval_method == "bm25":
+        ranker = BuildIndex(samples_hash, corpus)
+        t1 = time.time()
+        results=ranker.retrieval(queries)
+        t2 = time.time()
+        print("retrieval time::", t2 - t1)
         ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values, ignore_identical_ids=False)
+    else:
+        raise ValueError("Invalid retrieval method")
     
     final_res_file_name = utils.get_final_res_file_name(args, patch_count_ls)
     print("The results are stored at ", final_res_file_name)

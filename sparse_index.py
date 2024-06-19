@@ -96,7 +96,7 @@ def read_trec_run(sample_hash, query_count, doc_count):
     output_folder = f"output/sparse_index_{sample_hash}"
     file = os.path.join(output_folder, "rank.sparse.trec")
     # run = {}
-    sim_scores = torch.zeros(query_count, doc_count)
+    sim_scores = torch.zeros(query_count, doc_count) + 1e-6
     line_ls = []
     with open(file, 'r') as f:
         for line in f:
