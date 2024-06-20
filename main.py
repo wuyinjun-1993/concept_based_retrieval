@@ -128,7 +128,7 @@ def parse_args():
     parser.add_argument('--random_seed', type=int, default=0, help='config file')
     parser.add_argument('--query_concept', action="store_true", help='config file')
     parser.add_argument('--img_concept', action="store_true", help='config file')
-    parser.add_argument('--total_count', type=int, default=500, help='config file')
+    parser.add_argument('--total_count', type=int, default=-1, help='config file')
     parser.add_argument("--parallel", action="store_true", help="config file")
     parser.add_argument("--save_mask_bbox", action="store_true", help="config file")
     parser.add_argument("--search_by_cluster", action="store_true", help="config file")
@@ -306,8 +306,11 @@ if __name__ == "__main__":
         filter_queries_with_gt(full_data_path, args, queries)
         queries = {key:queries[key] for key in qrels}
         full_query_key_ls = list(queries.keys())
-        query_key_ls = random.sample(full_query_key_ls, 100)
-        query_key_ls = sorted(query_key_ls)
+        if args.query_count > 0:
+            query_key_ls = random.sample(full_query_key_ls, args.query_count)
+            query_key_ls = sorted(query_key_ls)
+        else:
+            query_key_ls = full_query_key_ls
         print("all query key list::", query_key_ls)
         query_hash = utils.hashfn(query_key_ls)
         print("query hash::",query_hash)
