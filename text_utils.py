@@ -342,7 +342,13 @@ def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, quer
     rid_to_idx = {v: k for k, v in idx_to_rid.items()}
 
     if os.path.exists(sub_query_file_name):
-        sub_queries = utils.load(sub_query_file_name)
+        try:
+            sub_queries = json.loads(open(sub_query_file_name, "r").read())
+        except:
+            sub_queries = utils.load(sub_query_file_name)
+            json.dump(sub_queries, open(sub_query_file_name, "w"))
+        
+        sub_queries = {rid_to_idx[k]: v for k, v in sub_queries.items() if k in rid_to_idx}
     else:
         sub_queries = dict()
         
@@ -390,6 +396,42 @@ def read_queries_with_sub_queries_file(filename, subset_img_id=None):
     else:
         key = rid_ls[subset_img_id]
         return {"1": queries[key]}, {"1":sub_queries_ls[key]}, {"1":idx_to_rid[key]}
+
+
+def read_queries_from_file(filename, subset_img_id=None):
+    with open(filename, 'r') as json_file:
+        json_list = list(json_file)
+
+    queries = dict()
+    
+    sub_queries_ls= dict()
+    # idx = 1
+    rid = 1
+    rid_ls = []
+    idx_to_rid = dict()
+    group_q_ls = dict()
+    for json_str in json_list:
+        result = json.loads(json_str)
+        # if "sub_text" in result:
+        idx = result["_id"]
+        queries[str(idx)] = result["text"]
+        #     sub_queries_ls[str(rid)] = result["sub_text"]
+        #     grouped_sub_q_ids_ls = None
+        #     if "group" in result:
+        #         group_q_ls_str = result["group"]
+        #         grouped_sub_q_ids_ls = decompose_single_query_parition_groups(result["sub_text"], group_q_ls_str)
+        #     group_q_ls[str(rid)] = grouped_sub_q_ids_ls
+        #     idx_to_rid[str(rid)] = str(idx)
+        # # idx += 1
+        #     rid_ls.append(str(rid))
+        #     rid += 1
+    
+    # if subset_img_id is None:
+    return queries #, sub_queries_ls, idx_to_rid
+    # else:
+    #     key = rid_ls[subset_img_id]
+    #     return {"1": queries[key]}, {"1":sub_queries_ls[key]}, {"1":idx_to_rid[key]}
+
 
 def check_empty_mappings(curr_gt):
     value_ls = set(list(curr_gt.values()))

@@ -23,10 +23,11 @@ from bbox_utils import *
 from utils import *
 from sparse_index import *
 from baselines.llm_ranker import *
+from baselines.bm25 import *
 from derive_sub_query_dependencies import group_dependent_segments_seq_all
 import random
 
-image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco"]
+image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco", "mscoco_40k"]
 text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco"]
 
 
@@ -156,17 +157,31 @@ def print_memory_usage():
     print(f"Memory usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
 
 
-def construct_qrels(filename_ls, cached_img_idx, img_idx_ls, query_count):
+def construct_qrels(queries, cached_img_idx, img_idx_ls, query_count):
     qrels = {}
-    if query_count < 0:
-        query_count = len(filename_ls)
+    # if query_count < 0:
+    #     query_count = 
     
-    for idx in range(query_count):
+    for idx in range(len(queries)):
         curr_img_idx = img_idx_ls[idx]
         cached_idx = cached_img_idx.index(curr_img_idx)
         qrels[str(idx+1)] = {str(cached_idx+1): 2}
+    q_idx_ls = list(range(len(queries)))
+    if query_count > 0:
+        
+        subset_q_idx_ls = random.sample(q_idx_ls, query_count)
+        
+        subset_q_idx_ls = sorted(subset_q_idx_ls)
+        
+        subset_qrels = {str(key_id + 1): qrels[str(subset_q_idx_ls[key_id] + 1)] for key_id in range(len(subset_q_idx_ls))}
     
-    return qrels
+        qrels = subset_qrels
+        
+        queries = [queries[idx] for idx in subset_q_idx_ls]
+    else:
+        subset_q_idx_ls = q_idx_ls #list(qrels.keys())
+        
+    return qrels, queries, subset_q_idx_ls
 
 if __name__ == "__main__":       
     logging.basicConfig(format='%(asctime)s - %(message)s',
@@ -182,25 +197,28 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     # processor = ViTImageProcessor.from_pretrained('google/vit-large-patch16-224')
     # model = ViTForImageClassification.from_pretrained('google/vit-large-patch16-224').to(device)
-    if args.model_name == "default":
-        model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14").to(device)
-        # processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
-        raw_processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
-        # processor =  lambda images: raw_processor(images=images, return_tensors="pt", padding=False, do_resize=False, do_center_crop=False)["pixel_values"]
-        processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
-        text_processor =  lambda text: raw_processor(text=[text], return_tensors="pt", padding=True, truncation=True)
-        img_processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
-        model = model.eval()
-    elif args.model_name == "blip":
-        from lavis.models import load_model_and_preprocess
-        model, vis_processors, txt_processors = load_model_and_preprocess(name="blip_feature_extractor", model_type="base", is_eval=True, device=device)
-        text_processor = lambda text: txt_processors["eval"](text)
+    if args.is_img_retrieval:
+        if args.model_name == "default":
+            model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14").to(device)
+            # processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
+            raw_processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
+            # processor =  lambda images: raw_processor(images=images, return_tensors="pt", padding=False, do_resize=False, do_center_crop=False)["pixel_values"]
+            processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
+            text_processor =  lambda text: raw_processor(text=[text], return_tensors="pt", padding=True, truncation=True)
+            img_processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
+            model = model.eval()
+        elif args.model_name == "blip":
+            from lavis.models import load_model_and_preprocess
+            model, vis_processors, txt_processors = load_model_and_preprocess(name="blip_feature_extractor", model_type="base", is_eval=True, device=device)
+            text_processor = lambda text: txt_processors["eval"](text)
         
         model = model.eval()
-    # if args.dataset_name not in image_retrieval_datasets:
-    if not args.is_img_retrieval:
+    else:
+        # if args.dataset_name not in image_retrieval_datasets:
+        # if not args.is_img_retrieval:
         # text_model = models.clip_model(text_processor, model, device)
         if args.model_name == "default":
+            print("start loading distill-bert model")
             text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b", prefix = sparse_prefix, suffix=sparse_suffix)
         # elif args.model_name == "phi":
         #     text_model = models.ms_phi(prefix=sparse_prefix, suffix=sparse_suffix)
@@ -223,7 +241,7 @@ if __name__ == "__main__":
         # text_processor = AutoProcessor.from_pretrained("sentence-transformers/msmarco-distilbert-base-tas-b")
         # model = models.SentenceBERT("msmarco-distilbert-base-tas-b")
         # model = model.eval()
-    
+
     
     full_data_path = os.path.join(args.data_path, args.dataset_name)
     if args.dataset_name.startswith("crepe"):
@@ -253,8 +271,15 @@ if __name__ == "__main__":
         # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "results_20130124.token"))    
         # args.algebra_method=one
     elif args.dataset_name == "mscoco":
-        queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_sharegpt4v_datasets(full_data_path, full_data_path)
+        # queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_sharegpt4v_datasets(full_data_path, full_data_path)
+        queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls=load_mscoco_120k_datasets_from_cached_files(full_data_path, full_data_path)
         img_idx_ls, img_file_name_ls = load_other_sharegpt4v_mscoco_images(full_data_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
+    
+    elif args.dataset_name == "mscoco_40k":
+        queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls= load_mscoco_datasets_from_cached_files(full_data_path, full_data_path)
+        
+        # queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_sharegpt4v_datasets(full_data_path, full_data_path)
+        # img_idx_ls, img_file_name_ls = load_other_sharegpt4v_mscoco_images(full_data_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
     
     elif args.dataset_name == "AToMiC":
         load_atom_datasets(full_data_path)
@@ -275,9 +300,15 @@ if __name__ == "__main__":
         url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(args.dataset_name)
         data_path = util.download_and_unzip(url, full_data_path)
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
-        
-        # queries, sub_queries_ls, idx_to_rid = read_queries_with_sub_queries_file(os.path.join(full_data_path, "queries_with_subs.jsonl"), subset_img_id=args.subset_img_id)
-        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path)
+        full_query_key_ls = [str(idx + 1) for idx in range(len(queries))]
+        try:
+            queries= read_queries_from_file(os.path.join(full_data_path, "queries.jsonl")) #, subset_img_id=args.subset_img_id)
+        except:
+            pass
+        query_key_ls = list(queries.keys())
+        # query_key_ls = random.sample(full_query_key_ls, 100)
+        query_key_ls = sorted(query_key_ls)
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls)
         print(sub_queries_ls)
         
         subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
@@ -295,8 +326,10 @@ if __name__ == "__main__":
         
         origin_corpus = None #copy.copy(corpus)
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
-        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path) # [None for _ in range(len(queries))]
+        query_key_idx_ls = [full_query_key_ls.index(key) for key in query_key_ls]
+        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_key_idx_ls, query_key_ls=query_key_ls) # [None for _ in range(len(queries))]
         # args.algebra_method=three
+        queries = [queries[key] for key in query_key_ls]
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "crepe/"))
         # filename_cap_mappings = read_image_captions(os.path.join(full_data_path, "crepe/crepe_captions.txt"))
     elif args.dataset_name == "hotpotqa":
@@ -337,7 +370,6 @@ if __name__ == "__main__":
         # grouped_sub_q_ids_ls = [None for _ in range(len(queries))]
         grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_hash=query_hash) # [None for _ in range(len(queries))]
     
-    
     if args.is_img_retrieval:
         # if not args.query_concept:    
         #     patch_count_ls = [4, 8, 16, 32, 64, 128]
@@ -347,6 +379,7 @@ if __name__ == "__main__":
                 patch_count_ls = [4, 16, 64]
             elif args.dataset_name.startswith("mscoco"):
                 patch_count_ls = [4, 8, 16, 64, 128]
+                # patch_count_ls = [4, 8, 16, 64]
                 # patch_count_ls = [4, 16, 64]
             else:
                 patch_count_ls = [4, 8, 16, 64]
@@ -409,6 +442,19 @@ if __name__ == "__main__":
         #     patch_emb_by_img_ls = reformat_patch_embeddings_txt(patch_emb_ls, img_emb)
     sparse_sim_scores = None
     if args.is_img_retrieval:
+        # if args.dataset_name == "flickr":
+        #     qrels = construct_qrels(filename_ls, query_count=args.query_count)
+        # else:
+            qrels, queries, subset_q_idx = construct_qrels(queries, cached_img_ls, img_idx_ls, query_count=args.query_count)
+            if args.query_count > 0:
+                sub_queries_ls = [sub_queries_ls[idx] for idx in subset_q_idx]
+                grouped_sub_q_ids_ls = [grouped_sub_q_ids_ls[idx] for idx in subset_q_idx]
+            print("sub_q_index::", subset_q_idx)
+            print("qrels::", qrels)
+    
+    
+    
+    if args.is_img_retrieval:
         if args.query_concept:
             # if not args.dataset_name.startswith("crepe"):
             #     queries = [filename_cap_mappings[file] for file in filename_ls]
@@ -445,14 +491,9 @@ if __name__ == "__main__":
             # text_emb_ls = text_retrieval_model.model.encode_queries(queries, convert_to_tensor=True)
     
             run_search_with_sparse_index(samples_hash)
-        # sparse_sim_scores = read_trec_run(samples_hash, len(queries), len(corpus))
+            sparse_sim_scores = read_trec_run(samples_hash, len(queries), len(corpus))
     
     # retrieve_by_full_query(img_emb, text_emb_ls)
-    if args.is_img_retrieval:
-        # if args.dataset_name == "flickr":
-        #     qrels = construct_qrels(filename_ls, query_count=args.query_count)
-        # else:
-            qrels = construct_qrels(queries, cached_img_ls, img_idx_ls, query_count=args.query_count)
     
     # if args.is_img_retrieval:
     retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=args.is_img_retrieval, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
@@ -477,10 +518,19 @@ if __name__ == "__main__":
                 results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
             else:
                 results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
-    elif args.retrieval_method == "llm_ranker":
-        ranker = LLM_ranker(corpus)
-        results = ranker.retrieval(queries)
+    # elif args.retrieval_method == "llm_ranker":
+    #     ranker = LLM_ranker(corpus)
+    #     results = ranker.retrieval(queries)
+    #     ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values, ignore_identical_ids=False)
+    elif args.retrieval_method == "bm25":
+        ranker = BuildIndex(samples_hash, corpus)
+        t1 = time.time()
+        results=ranker.retrieval(queries)
+        t2 = time.time()
+        print("retrieval time::", t2 - t1)
         ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values, ignore_identical_ids=False)
+    else:
+        raise ValueError("Invalid retrieval method")
     
     final_res_file_name = utils.get_final_res_file_name(args, patch_count_ls)
     print("The results are stored at ", final_res_file_name)
