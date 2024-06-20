@@ -130,11 +130,12 @@ class DenseRetrievalExactSearch:
                 if valid_patch_ids is not None:
                     selected_embedding_idx = torch.tensor(list(set(selected_embedding_idx.tolist()).intersection(valid_patch_ids)))
                 
-                
+                curr_prod_mat = self.score_functions[score_function](curr_query_embedding[curr_grouped_sub_q_ids[sub_query_idx]].to(device), curr_sub_corpus_embeddings[selected_embedding_idx].to(device)).view(-1,1)
                 if self.prob_agg == "prod":
-                    prod_mat = self.score_functions[score_function](curr_query_embedding[curr_grouped_sub_q_ids[sub_query_idx]].to(device), curr_sub_corpus_embeddings[selected_embedding_idx].to(device)).view(-1,1)*sub_curr_scores.view(1,-1)
+                    curr_prod_mat[curr_prod_mat < 0] = 0
+                    prod_mat = curr_prod_mat*sub_curr_scores.view(1,-1)
                 else:
-                    prod_mat = self.score_functions[score_function](curr_query_embedding[curr_grouped_sub_q_ids[sub_query_idx]].to(device), curr_sub_corpus_embeddings[selected_embedding_idx].to(device)).view(-1,1)+sub_curr_scores.view(1,-1)
+                    prod_mat = curr_prod_mat+sub_curr_scores.view(1,-1)
 
                 # beam_search_topk=max(20, int(torch.numel(prod_mat)*0.05) + 1)
                 # print("beam_search_topk::", beam_search_topk)
@@ -162,7 +163,9 @@ class DenseRetrievalExactSearch:
                 selected_embedding_idx = torch.tensor(list(selected_embedding_idx))
                 sub_curr_scores = sub_curr_scores_ls
             if self.prob_agg == "prod":
+                sub_curr_scores[sub_curr_scores <= 0] = 0
                 curr_scores_ls *= torch.max(sub_curr_scores)
+                assert torch.all(curr_scores_ls >= 0).item()
             else:
                 curr_scores_ls += torch.max(sub_curr_scores)
                 
@@ -325,6 +328,7 @@ class DenseRetrievalExactSearch:
                             # curr_scores_ls[curr_scores_ls2 - whole_img_sim > 0.2] = whole_img_sim[curr_scores_ls2 - whole_img_sim > 0.2]
                             # curr_scores_ls[whole_img_sim - curr_scores_ls2 > 0.2] = curr_scores_ls2[whole_img_sim - curr_scores_ls2 > 0.2]
                             if self.prob_agg == "prod":
+                                curr_scores_ls[curr_scores_ls < 0] = 0
                                 curr_scores = torch.prod(curr_scores_ls)
                             else:
                                 curr_scores = torch.sum(curr_scores_ls)
@@ -647,7 +651,9 @@ class DenseRetrievalExactSearch:
                                 # curr_sample_sub_X_tensor2 = torch.cat(curr_sample_sub_x).to(device)
                                 if self.prob_agg == "prod":
                                     # cos_scores = torch.prod(self.score_functions[score_function](curr_sample_sub_X_tensor, curr_query_embedding.to(device)), dim=0)
-                                    cos_scores = torch.prod(torch.max(self.score_functions[score_function](curr_sample_sub_X_tensor, curr_query_embedding.to(device)), dim=0)[0])
+                                    curr_cos_scores0 = torch.max(self.score_functions[score_function](curr_sample_sub_X_tensor, curr_query_embedding.to(device)), dim=0)[0]
+                                    curr_cos_scores0[curr_cos_scores0 < 0] = 0
+                                    cos_scores = torch.prod(curr_cos_scores0)
                                 else:
                                     cos_scores = torch.sum(torch.max(self.score_functions[score_function](curr_sample_sub_X_tensor, curr_query_embedding.to(device)), dim=0)[0])
                                 all_cos_scores_tensor[sample_id, sub_query_itr, query_itr] = cos_scores
