@@ -1,6 +1,6 @@
 from llm2vec import LLM2Vec
 import torch
-from transformers import AutoTokenizer, AutoModel, AutoConfig
+from transformers import AutoTokenizer, AutoModel, AutoConfig, AutoModelForCausalLM
 from peft import PeftModel
 from torch import Tensor
 import torch.multiprocessing as mp
@@ -13,6 +13,16 @@ from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
+
+def obtain_model_tokens(embeddings, vocab_model):
+    prediction_logits = vocab_model.lm_head(embeddings)
+    # prediction_logits = vocab_model.vocab_transform(embeddings)
+    # prediction_logits = vocab_model.activation(prediction_logits)
+    # prediction_logits = vocab_model.vocab_layer_norm(prediction_logits)
+    # prediction_logits = vocab_model.vocab_projector(prediction_logits)
+    # # next_token_logits = logits[batch_ids, sequence_lengths]
+    # prediction_logits = torch.log(1 + torch.relu(prediction_logits))
+    return prediction_logits
 
 class LlmtoVec:
     def __init__(self, base_model_path: Union[str, Tuple] = None, peft_model_path: Union[str, Tuple] = None, pooling_mode="mean", q_max_length = 256, d_max_length=4096, sep: str = " ", **kwargs):
@@ -77,6 +87,9 @@ class LlmtoVec:
             #     d_model, peft_model_path[1]
             # ).to(device)
             self.doc_model = self.q_model #LLM2Vec(d_model, d_tokenizer, pooling_mode, d_max_length)
+            
+        self.vocab_model = model = AutoModelForCausalLM.from_pretrained("princeton-nlp/Sheared-LLaMA-1.3B") # DistilBertForMaskedLM.from_pretrained(model_name).to("cuda")
+        self.vocab_model.eval()
 
     def encode_queries(self, queries: List[str], batch_size: int = 16, **kwargs) -> Union[List[Tensor], np.ndarray, Tensor]:
         if type(queries) is dict:
@@ -88,7 +101,7 @@ class LlmtoVec:
         print(text_feature_ls.shape)
         return text_feature_ls
     
-    def encode_corpus(self, corpus: Union[List[Dict[str, str]], Dict[str, List]], batch_size: int = 8, **kwargs) -> Union[List[Tensor], np.ndarray, Tensor]:
+    def encode_corpus(self, corpus: Union[List[Dict[str, str]], Dict[str, List]], batch_size: int = 8, is_sparse=False, **kwargs) -> Union[List[Tensor], np.ndarray, Tensor]:
         if type(corpus) is dict:
             sentences = [(corpus["title"][i] + self.sep + corpus["text"][i]).strip() if "title" in corpus else corpus["text"][i].strip() for i in range(len(corpus['text']))]
         else:
@@ -96,6 +109,8 @@ class LlmtoVec:
         text_feature_ls = self.doc_model.encode(sentences, batch_size=batch_size)
         #output_ls = [vec.unsqueeze(0) for vec in text_feature_ls.unbind(dim=0)]
         text_feature_ls = torch.nn.functional.normalize(text_feature_ls, p=2, dim=1)
+        if is_sparse:
+            text_feature_ls = obtain_model_tokens(text_feature_ls, self.vocab_model)
         print("YO docs")
         print(text_feature_ls.shape)
         return text_feature_ls
