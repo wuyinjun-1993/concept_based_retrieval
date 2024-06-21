@@ -348,7 +348,7 @@ def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, quer
             sub_queries = utils.load(sub_query_file_name)
             json.dump(sub_queries, open(sub_query_file_name, "w"))
         
-        sub_queries = {rid_to_idx[k]: v for k, v in sub_queries.items() if k in rid_to_idx}
+        # sub_queries = {rid_to_idx[k]: v for k, v in sub_queries.items() if k in rid_to_idx}
     else:
         sub_queries = dict()
         
