@@ -418,7 +418,7 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=F
 
     with open("prod_hard_negatives/selected_img_id_ls", "rb") as f:
         selected_img_id_ls = pickle.load(f)
-
+    # selected_img_id_ls.append(0)
     img_folder = os.path.join(data_path, "VG_100K/")
     img_folder2 = os.path.join(data_path, "VG_100K_2/")
 
@@ -499,8 +499,8 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=F
         img_file_name_ls.append(full_img_file_name)
         all_grouped_sub_q_ids_ls.append(grouped_sub_q_ids_ls)
         
-    img_caption_file_name_output= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output3.csv")
-    caption_pd.to_csv(img_caption_file_name_output, index=False)
+    # img_caption_file_name_output= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output3.csv")
+    # caption_pd.to_csv(img_caption_file_name_output, index=False)
     # return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls
     if subset_img_id is None:
         return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
@@ -1553,6 +1553,8 @@ def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb, bbox_ls=N
         sub_patch_emb_curr_img_ls = []
         sub_transformed_bbox_ls = []
         for sub_idx in range(len(patch_emb_ls)):
+            # if idx == 1 and sub_idx > 0:
+            #     continue
             patch_emb = patch_emb_ls[sub_idx]
             if img_per_patch_ls is not None:
                 img_per_batch = img_per_patch_ls[sub_idx]
