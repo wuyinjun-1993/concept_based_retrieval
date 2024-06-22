@@ -157,7 +157,7 @@ def print_memory_usage():
     print(f"Memory usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
 
 
-def construct_qrels(queries, cached_img_idx, img_idx_ls, query_count):
+def construct_qrels(dataset_name, queries, cached_img_idx, img_idx_ls, query_count):
     qrels = {}
     # if query_count < 0:
     #     query_count = 
@@ -168,8 +168,10 @@ def construct_qrels(queries, cached_img_idx, img_idx_ls, query_count):
         qrels[str(idx+1)] = {str(cached_idx+1): 2}
     q_idx_ls = list(range(len(queries)))
     if query_count > 0:
-        
-        subset_q_idx_ls = random.sample(q_idx_ls, query_count)
+        if dataset_name == "crepe":
+            subset_q_idx_ls = [q_idx_ls[idx] for idx in range(query_count)] 
+        else:
+            subset_q_idx_ls = random.sample(q_idx_ls, query_count)
         
         subset_q_idx_ls = sorted(subset_q_idx_ls)
         
@@ -376,7 +378,8 @@ if __name__ == "__main__":
         # else:
             # patch_count_ls = [4, 8, 16, 32, 64, 128]
             if args.dataset_name.startswith("crepe"):
-                patch_count_ls = [4, 16, 64, 128]
+                patch_count_ls = [4,16,64,128]
+                # patch_count_ls = [32]
             elif args.dataset_name.startswith("mscoco"):
                 patch_count_ls = [4, 8, 16, 64, 128]
                 # patch_count_ls = [4, 8, 16, 64]
@@ -445,7 +448,7 @@ if __name__ == "__main__":
         # if args.dataset_name == "flickr":
         #     qrels = construct_qrels(filename_ls, query_count=args.query_count)
         # else:
-            qrels, queries, subset_q_idx = construct_qrels(queries, cached_img_ls, img_idx_ls, query_count=args.query_count)
+            qrels, queries, subset_q_idx = construct_qrels(args.dataset_name, queries, cached_img_ls, img_idx_ls, query_count=args.query_count)
             if args.query_count > 0:
                 sub_queries_ls = [sub_queries_ls[idx] for idx in subset_q_idx]
                 grouped_sub_q_ids_ls = [grouped_sub_q_ids_ls[idx] for idx in subset_q_idx]
