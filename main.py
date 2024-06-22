@@ -361,7 +361,12 @@ if __name__ == "__main__":
             corpus, qrels = subset_corpus2(corpus, qrels, args.total_count, idx_to_rid)
             utils.save((corpus, qrels), subset_file_name)
         
-        qrels = {key: qrels[idx_to_rid[key]] for key in sub_queries_ls if not check_empty_mappings(qrels[idx_to_rid[key]]) and idx_to_rid[key] in qrels}
+        new_qrels = {}
+        for key in sub_queries_ls:
+            if not check_empty_mappings(qrels[idx_to_rid[key]]) and idx_to_rid[key] in qrels:
+                new_qrels[key] = qrels[idx_to_rid[key]]
+        
+        qrels = new_qrels #{key: qrels[idx_to_rid[key]] for key in sub_queries_ls if not check_empty_mappings(qrels[idx_to_rid[key]]) and idx_to_rid[key] in qrels}
         queries = {key: queries[idx_to_rid[key]] for key in sub_queries_ls if not check_empty_mappings(qrels[key]) and key in qrels}
         if len(qrels) == 0:
             print("no valid queries, exit!")
