@@ -383,11 +383,11 @@ if __name__ == "__main__":
         # else:
             # patch_count_ls = [4, 8, 16, 32, 64, 128]
             if args.dataset_name.startswith("crepe"):
-                patch_count_ls = [4,16,64,128]
+                patch_count_ls = [4,16,64]
                 # patch_count_ls = [32]
             elif args.dataset_name.startswith("mscoco"):
-                patch_count_ls = [4, 8, 16, 64, 128]
-                # patch_count_ls = [4, 8, 16, 64]
+                # patch_count_ls = [4, 8, 16, 64, 128]
+                patch_count_ls = [4, 8, 16, 64]
                 # patch_count_ls = [4, 16, 64]
             else:
                 patch_count_ls = [4, 8, 16, 64]

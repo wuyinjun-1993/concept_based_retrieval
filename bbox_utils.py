@@ -13,6 +13,7 @@ def is_bbox_overlapped(bbox1, bbox2):
     size2 = (x2_2 - x1_2) * (y2_2 - y1_2)
     min_size = min(size1, size2)
     return intersection_area > 0.1 * min_size
+    # return intersection_area > 0.5 * min_size
 
 
 def is_bbox_overlapped_text(bbox1, bbox2):

@@ -3,7 +3,7 @@ client = OpenAI()
 
 response = client.images.generate(
   model="dall-e-3",
-  prompt="Draw two desks in the same figure that are far away from each other, one has a keyboard and a computer monitor on it while the other one has a printer and fax machine on it. Besides, there is a chair against the wall",
+  prompt="taxi parking on the street, a white car driving on the road, some people on the sidewalk",
   size="1024x1024",
   quality="standard",
   n=1,

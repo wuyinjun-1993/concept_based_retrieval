@@ -338,7 +338,8 @@ def load_mscoco_120k_datasets_from_cached_files(data_path, query_path):
     # with open(img_caption_file_name, 'rb') as f:
     # caption_pd = pickle.load(f)
     
-    caption_pd = utils.load(os.path.join(query_path, "mscoco_120kdecomposed_wholeexp.pkl"))
+    # caption_pd = utils.load(os.path.join(query_path, "mscoco_120kdecomposed_wholeexp.pkl"))
+    caption_pd = utils.load(os.path.join(query_path, "sharegpt4v_random_1000_queries.pkl"))
     
     # caption_pd = pd.read_csv(os.path.join(query_path, "sharegpt_query_20.csv"))
     img_file_name_ls = []
@@ -361,12 +362,12 @@ def load_mscoco_120k_datasets_from_cached_files(data_path, query_path):
         img_final_path = os.path.join(data_path, "images/train2017/", img_path)
         caption = caption_pd.iloc[idx]['caption_sharegpt4v']
         try:
-            sub_caption_str = caption_pd.iloc[idx]['paragraph_level']
+            sub_caption_str = caption_pd.iloc[idx]['sentence_decompositions']
             sub_captions = decompose_single_query_ls(sub_caption_str)
             
             
-            query_paritions_str = caption_pd.iloc[idx]['paragraph_level_groups']
-            grouped_sub_q_ids_ls = decompose_single_query_parition_groups(sub_captions, query_paritions_str, group_pattern=",")
+            query_paritions_str = caption_pd.iloc[idx]['sentence_level_groups']
+            grouped_sub_q_ids_ls = decompose_single_query_parition_groups(sub_captions, query_paritions_str)
             
             
             img_file_name_ls.append(img_final_path)
@@ -411,7 +412,7 @@ def load_other_sharegpt4v_mscoco_images(dataset_path, img_idx_ls, img_file_name_
 def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=False):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
-    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6.csv")
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6_2.csv")
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output.csv")
     img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output3.csv")
