@@ -78,10 +78,16 @@ def filter_queries_with_gt(full_data_path, args, queries):
             # Write the JSON string to the file with a newline character
             jsonl_file.write(json_str + '\n')
             
-def obtain_cached_file_name(model_name, method, n_patches, samples_hash, not_normalize=False, use_mask=False):
+def obtain_cached_file_name(segmentation_method, model_name, method, n_patches, samples_hash, not_normalize=False, use_mask=False):
     # if model_name in default_model_names:
     if model_name == "default":
-        cached_file_name = f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
+        if segmentation_method == "default":
+            cached_file_name = f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
+        else:
+            cached_file_name = f"output/saved_patches_{method}_segmentation_{segmentation_method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
     else:
-        cached_file_name = f"output/saved_patches_{method}_{model_name}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
+        if segmentation_method == "default":
+            cached_file_name = f"output/saved_patches_{method}_{model_name}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
+        else:
+            cached_file_name = f"output/saved_patches_{method}_segmentation_{segmentation_method}_{model_name}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
     return cached_file_name

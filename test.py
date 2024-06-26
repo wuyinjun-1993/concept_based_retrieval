@@ -3,9 +3,10 @@ client = OpenAI()
 
 response = client.images.generate(
   model="dall-e-3",
-  prompt="taxi parking on the street, a white car driving on the road, some people on the sidewalk",
+  prompt="taxi parking on a road in with city buildings around and some people on the side walk",
   size="1024x1024",
   quality="standard",
+  style="natural",
   n=1,
 )
 

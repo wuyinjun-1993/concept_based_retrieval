@@ -22,12 +22,101 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 import gc
 import pickle
 from LLM4split.prompt_utils import obtain_response_from_openai, prompt_check_correctness, update_decomposed_queries
+import math
+import networkx as nx
+from beir.retrieval import models
+
 
 @dataclass
 class Patch:
     image: PIL.Image
     bbox: tuple
     patch: PIL.Image
+
+# for output bounding box post-processing
+def box_cxcywh_to_xyxy(x):
+    x_c, y_c, w, h = x.unbind(1)
+    b = [(x_c - 0.5 * w), (y_c - 0.5 * h),
+          (x_c + 0.5 * w), (y_c + 0.5 * h)]
+    return torch.stack(b, dim=1)
+
+def rescale_bboxes(out_bbox, size):
+    img_w, img_h = size
+    b = box_cxcywh_to_xyxy(out_bbox)
+    b = b * torch.tensor([img_w, img_h, img_w, img_h], dtype=torch.float32)
+    return b
+
+def generate_caption_and_bboxes(img, scene_graph_model):
+    CLASSES = [ 'N/A', 'airplane', 'animal', 'arm', 'bag', 'banana', 'basket', 'beach', 'bear', 'bed', 'bench', 'bike',
+                'bird', 'board', 'boat', 'book', 'boot', 'bottle', 'bowl', 'box', 'boy', 'branch', 'building',
+                'bus', 'cabinet', 'cap', 'car', 'cat', 'chair', 'child', 'clock', 'coat', 'counter', 'cow', 'cup',
+                'curtain', 'desk', 'dog', 'door', 'drawer', 'ear', 'elephant', 'engine', 'eye', 'face', 'fence',
+                'finger', 'flag', 'flower', 'food', 'fork', 'fruit', 'giraffe', 'girl', 'glass', 'glove', 'guy',
+                'hair', 'hand', 'handle', 'hat', 'head', 'helmet', 'hill', 'horse', 'house', 'jacket', 'jean',
+                'kid', 'kite', 'lady', 'lamp', 'laptop', 'leaf', 'leg', 'letter', 'light', 'logo', 'man', 'men',
+                'motorcycle', 'mountain', 'mouth', 'neck', 'nose', 'number', 'orange', 'pant', 'paper', 'paw',
+                'people', 'person', 'phone', 'pillow', 'pizza', 'plane', 'plant', 'plate', 'player', 'pole', 'post',
+                'pot', 'racket', 'railing', 'rock', 'roof', 'room', 'screen', 'seat', 'sheep', 'shelf', 'shirt',
+                'shoe', 'short', 'sidewalk', 'sign', 'sink', 'skateboard', 'ski', 'skier', 'sneaker', 'snow',
+                'sock', 'stand', 'street', 'surfboard', 'table', 'tail', 'tie', 'tile', 'tire', 'toilet', 'towel',
+                'tower', 'track', 'train', 'tree', 'truck', 'trunk', 'umbrella', 'vase', 'vegetable', 'vehicle',
+                'wave', 'wheel', 'window', 'windshield', 'wing', 'wire', 'woman', 'zebra']
+
+    REL_CLASSES = ['__background__', 'above', 'across', 'against', 'along', 'and', 'at', 'attached to', 'behind',
+                'belonging to', 'between', 'carrying', 'covered in', 'covering', 'eating', 'flying in', 'for',
+                'from', 'growing on', 'hanging from', 'has', 'holding', 'in', 'in front of', 'laying on',
+                'looking at', 'lying on', 'made of', 'mounted on', 'near', 'of', 'on', 'on back of', 'over',
+                'painted on', 'parked on', 'part of', 'playing', 'riding', 'says', 'sitting on', 'standing on',
+                'to', 'under', 'using', 'walking in', 'walking on', 'watching', 'wearing', 'wears', 'with']
+                
+    # Some transformation functions
+    transform = transforms.Compose([
+      transforms.Resize(800),
+      transforms.ToTensor(),
+      transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ])
+    im = transform(img).unsqueeze(0)
+    with torch.no_grad():
+        captions = []
+        outputs = scene_graph_model.forward(im)
+        # keep only predictions with >0.3 confidence
+        probas = outputs['rel_logits'].softmax(-1)[0, :, :-1]
+        probas_sub = outputs['sub_logits'].softmax(-1)[0, :, :-1]
+        probas_obj = outputs['obj_logits'].softmax(-1)[0, :, :-1]
+        keep = torch.logical_and(probas.max(-1).values > 0.05, torch.logical_and(probas_sub.max(-1).values > 0.05,
+                                                                        probas_obj.max(-1).values > 0.05))
+        # convert boxes from [0; 1] to image scales
+        #print(img.size)
+        sub_bboxes_scaled = rescale_bboxes(outputs['sub_boxes'][0, keep], img.size)
+        obj_bboxes_scaled = rescale_bboxes(outputs['obj_boxes'][0, keep], img.size)
+        topk = 100 # display up to 10 images
+        keep_queries = torch.nonzero(keep, as_tuple=True)[0]
+        indices = torch.argsort(-probas[keep_queries].max(-1)[0] * probas_sub[keep_queries].max(-1)[0] * probas_obj[keep_queries].max(-1)[0])[:topk]
+        keep_queries = keep_queries[indices]
+        # get the feature map shape
+        #print(img.size)
+        im_w, im_h = img.size
+        result = ''
+        combined_bboxes = []
+
+        if len(indices) >= 1:
+          for idx, (sxmin, symin, sxmax, symax), (oxmin, oymin, oxmax, oymax) in zip(keep_queries, sub_bboxes_scaled[indices], obj_bboxes_scaled[indices]):
+              val = str(CLASSES[probas_sub[idx].argmax()]+' '+REL_CLASSES[probas[idx].argmax()]+' '+CLASSES[probas_obj[idx].argmax()])
+              if val not in captions:
+                # Add the caption to the list
+                captions.append(val)
+                combined_bboxes.append([[round(sxmin.item(),2), round(symin.item(),2), round(sxmax.item(),2), round(symax.item(),2)],
+                 [round(oxmin.item(),2), round(oymin.item(),2), round(oxmax.item(),2), round(oymax.item(),2)]])
+
+          result = '"' + '"|"'.join(captions) + '"'
+          #print(result)
+        else:
+          result = ''
+          #print(result)
+        #print(result)
+        #print(combined_bboxes)
+        return (result, combined_bboxes)
+
 
 def vit_forward(imgs, model, masks=None):
     # inputs = processor(imgs, return_tensors="pt").to("cuda")
@@ -954,6 +1043,254 @@ def embed_patches(forward_func, patches, model, input_processor, processor=None,
         
         return torch.cat(embedded_batch_ls).cpu()
 
+def process_input_and_bfs_search(img, input_str, input_boxes, depths=[1]):
+    def calculate_center(xmin, ymin, xmax, ymax):
+        x_center = (xmin + xmax) / 2
+        y_center = (ymin + ymax) / 2
+        return x_center, y_center
+
+    def calculate_distance(center1, center2):
+        return math.sqrt((center1[0] - center2[0])**2 + (center1[1] - center2[1])**2)
+
+    def find_existing_key(center, nodes_with_boxes, obj_name):
+        for key, stored_center in nodes_with_boxes.items():
+            if key.startswith(obj_name) and calculate_distance(center, stored_center) < 15:
+                return key
+        return None
+
+    def convert_edge_list(input_str, input_boxes):
+        node_patches = []
+        node_bboxes = []
+        # Split the input string into individual relationships
+        relationships = input_str.replace('"','').split("|")
+
+        # Convert the relationships into a list of tuples
+        edge_list = []
+        node_counter = {}  # To track occurrences of each node name
+        nodes_with_boxes = {}  # To track bounding box centers for unique identifiers
+        nodes_with_full_boxes = {}  # To track the full bounding box for each node
+
+        for i in range(0, len(relationships)):
+            parts = relationships[i].split()
+            if len(parts) == 3:  # Format: object1 relationship object2
+                obj1, rel, obj2 = parts[0], parts[1], parts[2]
+            elif len(parts) == 4:  # Format: object1 relationship preposition object2
+                obj1, rel, obj2 = parts[0], f"{parts[1]} {parts[2]}", parts[3]
+            elif len(parts) == 5:  # Format: object1 relationship preposition1 preposition2 object2
+                obj1, rel, obj2 = parts[0], f"{parts[1]} {parts[2]} {parts[3]}", parts[4]
+
+            # Create unique identifiers for objects based on their bounding boxes
+            sub_box = input_boxes[i][0]
+            obj_box = input_boxes[i][1]
+            sub_center = calculate_center(*sub_box)
+            obj_center = calculate_center(*obj_box)
+
+            if obj1 not in node_counter:
+                node_counter[obj1] = 0
+            if obj2 not in node_counter:
+                node_counter[obj2] = 0
+
+            sub_key = find_existing_key(sub_center, nodes_with_boxes, obj1)
+            if sub_key is None:
+                sub_key = f"{obj1}_{node_counter[obj1]}"
+                node_counter[obj1] += 1
+                nodes_with_boxes[sub_key] = sub_center
+                nodes_with_full_boxes[sub_key] = sub_box
+
+            obj_key = find_existing_key(obj_center, nodes_with_boxes, obj2)
+            if obj_key is None:
+                obj_key = f"{obj2}_{node_counter[obj2]}"
+                node_counter[obj2] += 1
+                nodes_with_boxes[obj_key] = obj_center
+                nodes_with_full_boxes[obj_key] = obj_box
+
+            edge_list.append((sub_key, rel, obj_key))
+        for key, val in nodes_with_full_boxes.items():
+            xmin, ymin, xmax, ymax = val
+            patch = img.crop((xmin, ymin, xmax, ymax))
+            node_patches.append(patch)
+            node_bboxes.append(val)
+        return edge_list, nodes_with_full_boxes, node_patches, node_bboxes
+
+    edge_list, nodes_with_full_boxes, node_patches, node_bboxes = convert_edge_list(input_str, input_boxes)
+    # Convert the edge list to a list of strings
+    edge_list_strings = [f"{obj1} and {obj2}" for obj1, rel, obj2 in edge_list]
+    # Build the directed graph
+    G = nx.DiGraph()
+    for obj1, rel, obj2 in edge_list:
+        if (obj1 != obj2):
+            G.add_edge(obj1, obj2, relationship=rel)
+        #G.add_edge(obj1, obj2, relationship=rel)
+
+    def bfs_collectors(start_node, depth):
+        visited = set()
+        queue = [(start_node, 0)]
+        neighbors = [start_node]
+        boxes = []
+        depth_reached = False
+
+        while queue:
+            current_node, current_depth = queue.pop(0)
+            if current_node not in visited:
+                visited.add(current_node)
+                if current_depth == depth:
+                  depth_reached = True
+                if current_depth > 0:
+                    neighbors.append(current_node)
+                    boxes.append(nodes_with_full_boxes[current_node])
+                if current_depth < depth:
+                    for neighbor in G.successors(current_node):
+                        queue.append((neighbor, current_depth + 1))
+                    for neighbor in G.predecessors(current_node):
+                        queue.append((neighbor, current_depth + 1))
+
+        return neighbors, boxes, depth_reached
+
+    results = [[] for _ in range(len(depths))]
+    overall_boxes = [[] for _ in range(len(depths))]
+    for i in range(0,len(depths)):
+        #print("Depth: " + str(depths[i]))
+        for node in G.nodes:
+            neighbors, boxes, depth_reached = bfs_collectors(node, depths[i])
+            if neighbors and depth_reached:
+                #print(neighbors)
+                intermed_str = f"{' and '.join(neighbors)}"
+                #print(intermed_str)
+                if intermed_str not in edge_list_strings:
+                    min_x = min(box[0] for box in boxes)
+                    min_y = min(box[1] for box in boxes)
+                    max_x = max(box[2] for box in boxes)
+                    max_y = max(box[3] for box in boxes)
+                    overall_box = [min_x, min_y, max_x, max_y]
+                    results[i].append(intermed_str)
+                    overall_boxes[i].append(overall_box)
+
+    if not results:
+        return "", [], node_patches, node_bboxes
+
+    final_str_list = [[] for _ in range(len(depths))]
+    for i in range(len(depths)):
+      final_str = '"' + '"|"'.join(results[i]) + '"'
+      final_str_list[i] = final_str
+
+    return final_str_list, overall_boxes, node_patches, node_bboxes
+
+
+def crop_image(img, img_fgb, img_bfs):
+  fine_grained_patches = []
+  # Iterate through the bounding boxes and extract patches
+  for box in img_fgb:
+    xmin, ymin, xmax, ymax = box
+    # Crop the patch from the image
+    patch = img.crop((xmin, ymin, xmax, ymax))
+    fine_grained_patches.append(patch)
+  bfs_patches = [[] for _ in range(len(img_bfs))]
+  for i in range(len(img_bfs)):
+    for box in img_bfs[i]:
+      xmin, ymin, xmax, ymax = box
+      patch = img.crop((xmin, ymin, xmax, ymax))
+      bfs_patches[i].append(patch)
+  return fine_grained_patches, bfs_patches
+
+def combine_boxes(relationships_list):
+  final_list = []
+  for boxes_list in relationships_list:
+    #print(boxes_list)
+    sxmin, symin, sxmax, symax = boxes_list[0]
+    oxmin, oymin, oxmax, oymax = boxes_list[1]
+    # Calculate the overall bounding box
+    overall_xmin = round(min(sxmin, oxmin),2)
+    overall_ymin = round(min(symin, oymin),2)
+    overall_xmax = round(max(sxmax, oxmax),2)
+    overall_ymax = round(max(symax, oymax),2)
+    final_list.append([overall_xmin, overall_ymin, overall_xmax, overall_ymax])
+  return final_list
+
+def get_patches_from_bboxes_scenegraph(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls,patch_count_for_compute_ls, patch_count_ls, forward_func,model, image_file_name_ls, input_processor, image_size=(224, 224), processor=None, resize=None, device="cpu",save_mask_bbox=False):
+    # scene_graph_model = models.reltr_model(model_checkpoint='/content/drive/MyDrive/concept_based_retrieval-main-sg-official/beir/retrieval/models/RelTR/checkpoint0149.pth')
+    scene_graph_model = models.reltr_model(model_checkpoint='sgg_model/checkpoint0149.pth')
+    for i, image_file_name in tqdm(enumerate(image_file_name_ls)):
+        
+        image = Image.open(image_file_name).convert('RGB')
+        depths = [1,2,3]
+        #generate basic scene graph for image
+        result = generate_caption_and_bboxes(image, scene_graph_model)
+        relationship_triples = result[0]
+        obj_bboxes = result[1]
+        if (relationship_triples == ""):
+            node_patches = [image]
+            node_bboxes = [[0, 0, image.size[0]-1, image.size[1]-1]]
+            relationship_triples_patches = [image]
+            relationship_triples_bboxes = [[0, 0, image.size[0]-1, image.size[1]-1]]
+            bfs_patches = [[] for _ in range(len(depths))]
+            bfs_bboxes = [[] for _ in range(len(depths))]
+            for depth in range(len(depths)):
+                bfs_patches[depth] = [image]
+                bfs_bboxes[depth] = [[0, 0, image.size[0]-1, image.size[1]-1]]
+        else:
+            relationship_triples_bboxes = combine_boxes(obj_bboxes)
+            bfs_str, bfs_bboxes, node_patches, node_bboxes = process_input_and_bfs_search(image, relationship_triples, obj_bboxes, depths)
+            #print(bfs_str)
+            for depth in range(len(depths)):
+                if (bfs_str[depth] == '""'):
+                    if i == 0:
+                        bfs_str[depth] = relationship_triples
+                        bfs_bboxes[depth] = relationship_triples_bboxes
+                    else:
+                        #print("Inside")
+                        bfs_str[depth] = bfs_str[depth-1]
+                        bfs_bboxes[depth] = bfs_bboxes[depth-1]
+            relationship_triples_patches, bfs_patches = crop_image(image, relationship_triples_bboxes, bfs_bboxes)
+        #end, key outputs being (node_patches, node_bboxes), (relationship_triples_patches, relationship_triples_bboxes), (bfs_patches, bfs_bboxes)
+        
+        for patch_count_idx in range(len(patch_count_ls)):
+            if patch_count_for_compute_ls[patch_count_idx] == False:
+                continue
+            patches = []
+            if i == 0:
+                #print("ENTERED")
+                patch_emb_ls[patch_count_idx] = []
+                img_per_batch_ls[patch_count_idx] = []
+                masks_ls[patch_count_idx] = []
+                bboxes_ls[patch_count_idx] = []
+            
+            n_patches = patch_count_ls[patch_count_idx]
+            if (n_patches == 1):
+                patches=node_patches
+                bboxes_ls[patch_count_idx].append(node_bboxes)
+                #print(node_bboxes)
+                for x in range(0, len(node_bboxes)):
+                    img_per_batch_ls[patch_count_idx].append(i)
+            elif (n_patches == 4):
+                patches=relationship_triples_patches
+                bboxes_ls[patch_count_idx].append(relationship_triples_bboxes)
+                #print(relationship_triples_bboxes)
+                for x in range(0, len(relationship_triples_bboxes)):
+                    img_per_batch_ls[patch_count_idx].append(i)
+            elif (n_patches == 8):
+                patches=bfs_patches[0]
+                bboxes_ls[patch_count_idx].append(bfs_bboxes[0])
+                #print(bfs_bboxes)
+                for x in range(0, len(bfs_bboxes[0])):
+                    img_per_batch_ls[patch_count_idx].append(i)
+            elif (n_patches == 16):
+                patches=bfs_patches[1]
+                bboxes_ls[patch_count_idx].append(bfs_bboxes[1])
+                #print(bfs_bboxes)
+                for x in range(0, len(bfs_bboxes[1])):
+                    img_per_batch_ls[patch_count_idx].append(i)
+            elif (n_patches == 32):
+                patches=bfs_patches[2]
+                bboxes_ls[patch_count_idx].append(bfs_bboxes[2])
+                #print(bfs_bboxes)
+                for x in range(0, len(bfs_bboxes[2])):
+                    img_per_batch_ls[patch_count_idx].append(i)
+            #print(patches)    
+            patch_embs = embed_patches(forward_func, patches, model, input_processor, processor, device=device, resize=resize)
+            patch_emb_ls[patch_count_idx].append(patch_embs)
+    return patch_emb_ls, img_per_batch_ls
+
+
 def get_patches_from_bboxes(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls,patch_count_for_compute_ls, patch_count_ls, forward_func,model, image_file_name_ls, input_processor, image_size=(224, 224), processor=None, resize=None, device="cpu",save_mask_bbox=False):
     # if sub_bboxes == None:
     #     sub_bboxes = [[[bbox] for bbox in img_bboxes] for img_bboxes in all_bboxes]
@@ -1174,7 +1511,7 @@ class ConceptLearner:
         return patch_activation_ls
         
 
-    def get_patches(self, model_name, patch_count_ls, samples_hash, img_idx_ls=None, img_file_name_ls=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True, save_mask_bbox=False):
+    def get_patches(self, segmentation_method, model_name, patch_count_ls, samples_hash, img_idx_ls=None, img_file_name_ls=None, method="slic", not_normalize=False, use_mask=False, compute_img_emb=True, save_mask_bbox=False):
         """Get patches from images using different segmentation methods."""
         if img_file_name_ls is None:
             img_file_name_ls = self.samples
@@ -1189,7 +1526,7 @@ class ConceptLearner:
             os.mkdir(f"output/")
         for idx in range(len(patch_count_ls)):
             n_patches = patch_count_ls[idx]
-            cached_file_name = utils.obtain_cached_file_name(model_name, method, n_patches, samples_hash, not_normalize=not_normalize, use_mask=use_mask)
+            cached_file_name = utils.obtain_cached_file_name(segmentation_method, model_name, method, n_patches, samples_hash, not_normalize=not_normalize, use_mask=use_mask)
             # cached_file_name = f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
             if os.path.exists(cached_file_name):
                 print("Loading cached patches")
@@ -1260,10 +1597,13 @@ class ConceptLearner:
         # bboxes = masks_to_bboxes(masks)
         # get_patches_from_bboxes(model, images, all_bboxes, input_processor, sub_bboxes=None, image_size=(224, 224), processor=None, resize=None, device="cpu"):
         if True in patch_count_for_compute_ls:
-            if not use_mask:
-                get_patches_from_bboxes(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, self.input_processor, device=self.device, resize=self.image_size, save_mask_bbox=save_mask_bbox)
+            if segmentation_method == "scene_graph":
+                get_patches_from_bboxes_scenegraph(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, self.input_processor, device=self.device, resize=None, save_mask_bbox=False)
             else:
-                get_patches_from_bboxes0(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, bboxes, self.input_processor, device=self.device, resize=self.image_size, save_mask_bbox=save_mask_bbox)
+                if not use_mask:
+                    get_patches_from_bboxes(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, self.input_processor, device=self.device, resize=self.image_size, save_mask_bbox=save_mask_bbox)
+                else:
+                    get_patches_from_bboxes0(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, bboxes, self.input_processor, device=self.device, resize=self.image_size, save_mask_bbox=save_mask_bbox)
         
         # if save_mask_bbox:
         #     patch_activations, img_for_patch, masks, bboxes = res
@@ -1514,7 +1854,7 @@ def convert_samples_to_concepts_img(args, samples_hash, model, img_file_name_ls,
     # n_patches, images=None, method="slic", not_normalize=False
 
     
-    res = cl.get_patches(args.model_name, patch_count_ls, samples_hash, img_idx_ls=img_idx_ls, img_file_name_ls=img_file_name_ls, method="slic", compute_img_emb=True, save_mask_bbox=save_mask_bbox)
+    res = cl.get_patches(args.segmentation_method, args.model_name, patch_count_ls, samples_hash, img_idx_ls=img_idx_ls, img_file_name_ls=img_file_name_ls, method="slic", compute_img_emb=True, save_mask_bbox=save_mask_bbox)
     
     return res
     

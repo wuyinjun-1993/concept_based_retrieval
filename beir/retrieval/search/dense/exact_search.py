@@ -100,7 +100,6 @@ class DenseRetrievalExactSearch:
             
         return valid_sample_count, valid_samples_to_patch_ids_mappings
     
-    
     def compute_dependency_aware_sim_score(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, valid_patch_ids=None):
         if grouped_sub_q_ids_ls[query_itr] is not None:
             curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_q_ls_idx]
@@ -361,6 +360,7 @@ class DenseRetrievalExactSearch:
         all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
         # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
         all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+        print(all_cos_scores_tensor)
         #Get top-k values
         cos_scores_top_k_values, cos_scores_top_k_idx = torch.topk(all_cos_scores_tensor, min(top_k+1, len(all_cos_scores_tensor[0])), dim=1, largest=True)#, sorted=return_sorted)
         cos_scores_top_k_values = cos_scores_top_k_values.cpu().tolist()
@@ -674,6 +674,8 @@ class DenseRetrievalExactSearch:
                                         # curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), all_sub_corpus_embedding_ls[sample_id][-1].to(device))
                                     curr_scores = curr_scores_ls
                                     all_cos_scores_tensor[sample_id, sub_query_itr, query_itr] = curr_scores
+                                    continue
+                                if sample_id not in valid_samples_to_patch_ids_mappings:
                                     continue
                                 valid_patch_ids = valid_samples_to_patch_ids_mappings[sample_id]
                                 # patch_ids = torch.tensor(list(merged_sample_to_cat_patch_idx_mappings[sample_id]))

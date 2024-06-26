@@ -138,6 +138,7 @@ def parse_args():
     parser.add_argument('--closeness_threshold', type=float, default=0.1, help='config file')
     parser.add_argument('--subset_img_id', type=int, default=None, help='config file')
     parser.add_argument('--prob_agg', type=str, default="prod", choices=["prod", "sum"], help='config file')
+    parser.add_argument('--segmentation_method', type=str, default="default", choices=["default", "scene_graph"], help='config file')
     parser.add_argument('--dependency_topk', type=int, default=20, help='config file')
     parser.add_argument('--clustering_topk', type=int, default=500, help='config file')
     parser.add_argument("--add_sparse_index", action="store_true", help="config file")
@@ -391,6 +392,9 @@ if __name__ == "__main__":
                 # patch_count_ls = [4, 16, 64]
             else:
                 patch_count_ls = [4, 8, 16, 64]
+                
+            if args.segmentation_method == "scene_graph":
+                patch_count_ls = [1, 4, 8, 16, 32]
     else:
         # patch_count_ls = [8, 24, 32]
         patch_count_ls = [1, 16, 8, 4, 32]
