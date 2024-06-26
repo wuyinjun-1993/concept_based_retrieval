@@ -1,3 +1,4 @@
+import cv2
 from transformers import CLIPModel, AutoProcessor
 import torch
 from image_utils import *
