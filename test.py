@@ -1,17 +1,40 @@
-from openai import OpenAI
-client = OpenAI()
+from dessert_minheap import DocRetrieval
+import torch
+# hashes_per_table: int, num_tables: int, dense_input_dimension: int, centroids: np.ndarray
+hashes_per_table=2
+num_tables=2
+dense_input_dimension=100
+centroids = torch.zeros([1,dense_input_dimension])
+retrieval_method = DocRetrieval(2, 2, 100, centroids)
 
-response = client.images.generate(
-  model="dall-e-3",
-  prompt="taxi parking on a road in with city buildings around and some people on the side walk",
-  size="1024x1024",
-  quality="standard",
-  style="natural",
-  n=1,
-)
+doc_embds_ls = []
 
-image_url = response.data[0].url
-print(image_url)
+for idx in range(10):
+    doc_embds_ls.append(torch.rand(20,dense_input_dimension))
+
+for idx in range(len(doc_embds_ls)):
+  retrieval_method.add_doc(doc_embds_ls[idx].numpy(), idx)
+  
+result = retrieval_method.query(torch.rand(15,dense_input_dimension).numpy(), top_k=5, num_to_rerank=5)
+print(result)
+
+# from openai import OpenAI
+# client = OpenAI()
+
+
+
+
+# response = client.images.generate(
+#   model="dall-e-3",
+#   prompt="taxi parking on a road in with city buildings around and some people on the side walk",
+#   size="1024x1024",
+#   quality="standard",
+#   style="natural",
+#   n=1,
+# )
+
+# image_url = response.data[0].url
+# print(image_url)
 
 # from transformers import AutoModelForCausalLM, AutoTokenizer
 # import torch

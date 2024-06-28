@@ -223,7 +223,11 @@ if __name__ == "__main__":
         # text_model = models.clip_model(text_processor, model, device)
         if args.model_name == "default":
             print("start loading distill-bert model")
-            text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b", prefix = sparse_prefix, suffix=sparse_suffix)
+            if not os.path.exists("output/msmarco-distilbert-base-tas-b.pkl"):
+                text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b", prefix = sparse_prefix, suffix=sparse_suffix)
+                utils.save(text_model, "output/msmarco-distilbert-base-tas-b.pkl")
+            else:
+                text_model = utils.load("output/msmarco-distilbert-base-tas-b.pkl")
         # elif args.model_name == "phi":
         #     text_model = models.ms_phi(prefix=sparse_prefix, suffix=sparse_suffix)
         elif args.model_name == "llm":
