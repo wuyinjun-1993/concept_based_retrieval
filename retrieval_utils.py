@@ -99,7 +99,7 @@ def retrieve_with_decomposition(retriever, corpus, queries, qrels, out_dir, data
     # return evaluate_for_query_batches(retriever, qrels, results), decomposed_queries
 
 
-def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, batch_size=16,in_disk=False, **kwargs):
+def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, clustering_topk=500, batch_size=16,in_disk=False,doc_retrieval=None,use_clustering=False,prob_agg="prod",method="two", **kwargs):
     print("results with decomposition::")
     # if parallel:
     #     all_sub_corpus_embedding_dataset= Partitioned_vector_dataset(all_sub_corpus_embedding_ls)
@@ -108,7 +108,13 @@ def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddi
     #     results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_loader, query_count=query_count, parallel=parallel)
     # else:
     t1 = time.time()
-    results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk, **kwargs)
+    if not use_clustering:
+        # results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk)
+        results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk, **kwargs)
+    else:
+        
+        results = doc_retrieval.query_multi_queries(query_embeddings, top_k=min(clustering_topk,len(all_sub_corpus_embedding_ls)), num_to_rerank=min(clustering_topk,len(all_sub_corpus_embedding_ls)), prob_agg=prob_agg,method=method, **kwargs)
+        # results = {str(idx+1): results[idx] for idx in range(len(results))}
     t2 = time.time()
     
     print(f"Time taken: {t2-t1:.2f}s")

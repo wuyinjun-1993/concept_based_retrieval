@@ -74,6 +74,7 @@ def argmax(input: np.ndarray, top_k: int) -> np.ndarray:
 
 def argsort_descending(to_argsort: np.ndarray) -> np.ndarray:
     # Perform argsort and then reverse the result to get descending order
+    # print(to_argsort)
     return np.argsort(to_argsort)[::-1]
 
 class SparseRandomProjection:
@@ -168,7 +169,7 @@ class MaxFlashArray:
     def get_document_scores(self, query: np.ndarray, documents_to_query: np.ndarray):
         hashes = self.hash(query)
         num_vectors_in_query = query.shape[0]
-
+        # print("query hashes::", hashes)
         def compute_score(i):
             flash_index = documents_to_query[i]
             buffer = np.zeros(self._max_allowable_doc_size, dtype=np.uint32)
@@ -196,7 +197,7 @@ class MaxFlashArray:
         return output
 
 class DocRetrieval:
-    def __init__(self, hashes_per_table: int, num_tables: int, dense_input_dimension: int, centroids: np.ndarray):
+    def __init__(self, doc_num, hashes_per_table: int, num_tables: int, dense_input_dimension: int, centroids: np.ndarray):
         self._dense_dim = dense_input_dimension
         self._nprobe_query = 2
         self._largest_internal_id = 0
@@ -213,7 +214,7 @@ class DocRetrieval:
 
         self._nprobe_query = min(len(centroids), self._nprobe_query)
 
-        self._document_array = MaxFlashArray(SparseRandomProjection(dense_input_dimension, hashes_per_table, num_tables), hashes_per_table, np.iinfo(np.uint32).max)
+        self._document_array = MaxFlashArray(SparseRandomProjection(dense_input_dimension, hashes_per_table, num_tables), hashes_per_table, doc_num) # np.iinfo(np.uint32).max)
         self._centroids = np.transpose(centroids)
 
     def add_doc(self, doc_embeddings: np.ndarray, doc_id: str) -> bool:

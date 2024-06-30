@@ -7,7 +7,49 @@ from torch.autograd import Variable
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.cluster import Birch
 from sklearn.cluster import DBSCAN
+from sklearn.cluster import KMeans
 import os
+import random
+
+def sampling_sample_ids(X_ls):
+    num_passages = len(X_ls)
+
+    typical_doclen = 120  # let's keep sampling independent of the actual doc_maxlen
+    sampled_pids = 16 * np.sqrt(typical_doclen * num_passages)
+    # sampled_pids = int(2 ** np.floor(np.log2(1 + sampled_pids)))
+    sampled_pids = min(1 + int(sampled_pids), num_passages)
+
+    sampled_pids = random.sample(range(num_passages), sampled_pids)
+    
+    return sampled_pids
+
+
+def sampling_patch_ids(X_ls, patch_ids):
+    selected_patch_X = []
+    for pid in tqdm(patch_ids, desc="Sampling patch ids"):
+        curr_X = X_ls[pid]
+        curr_X = curr_X/ torch.norm(curr_X, dim=1, keepdim=True)
+        kmeans = KMeans(n_clusters=int(len(curr_X)*0.2), random_state=0).fit(curr_X)
+        # kmeans_labels = kmeans.labels_
+        centroids = torch.from_numpy(kmeans.cluster_centers_).float()
+        closest_sample_ids = torch.nn.functional.cosine_similarity(curr_X.unsqueeze(1), centroids.unsqueeze(0)).argmax(dim=0)
+        selected_patch_X.append(curr_X[closest_sample_ids])
+    return torch.cat(selected_patch_X)
+
+def sampling_and_clustering(X_ls, clustering_count_ratio=0.1):
+    X = torch.cat(X_ls, dim=0)
+    sampled_pids = sampling_sample_ids(X_ls)
+    sampled_patch_X = sampling_patch_ids(X_ls, sampled_pids)
+    cluster_count = min(int(len(sampled_patch_X)*clustering_count_ratio), 10)
+    print("sampled data count::", len(sampled_patch_X))
+    kmeans = KMeans(n_clusters=cluster_count, random_state=0).fit(sampled_patch_X)
+    centroids = torch.from_numpy(kmeans.cluster_centers_).float()
+    
+    clustering_labels = torch.nn.functional.cosine_similarity(X.unsqueeze(1), centroids.unsqueeze(0)).argmax(dim=1)
+    
+    
+    return centroids, clustering_labels
+
 
 def online_clustering(X, closeness_threshold=0.1):
     print("closeness threshold::", closeness_threshold)
@@ -170,6 +212,12 @@ def get_patch_count_str(patch_count_ls):
 def get_clustering_res_file_name(args, patch_count_ls):
     patch_count_str = get_patch_count_str(patch_count_ls)
     patch_clustering_info_cached_file =  f"output/saved_patches_{args.dataset_name}_{patch_count_str}.pkl"
+    return patch_clustering_info_cached_file
+
+
+def get_dessert_clustering_res_file_name(hashes, patch_count_ls):
+    patch_count_str = get_patch_count_str(patch_count_ls)
+    patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}.pkl"
     return patch_clustering_info_cached_file
 # 0.12 for trec covid 10000
 # 0.2
