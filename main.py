@@ -452,7 +452,7 @@ if __name__ == "__main__":
             
             if not os.path.exists(patch_clustering_info_cached_file):
             
-                centroids, _ =sampling_and_clustering(patch_emb_by_img_ls, clustering_count_ratio=args.closeness_threshold)
+                centroids =sampling_and_clustering(patch_emb_by_img_ls, clustering_count_ratio=args.closeness_threshold)
                 # centroids = torch.zeros([1, patch_emb_by_img_ls[-1].shape[-1]])
                 # hashes_per_table: int, num_tables
                 max_patch_count = max([len(patch_emb_by_img_ls[idx]) for idx in range(len(patch_emb_by_img_ls))])

@@ -283,29 +283,29 @@ class DenseRetrievalExactSearch:
                         curr_query_embedding = curr_query_embedding_ls[sub_q_ls_idx]
                         curr_scores = 1
                         
-                        if len(sub_corpus_embeddings.shape) == 2 and sub_corpus_embeddings.shape[0] > 1:
-                            if curr_query_embedding.shape[0] == 1:
-                                if self.is_img_retrieval:
-                                    curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
-                                else:
-                                    curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
-                                curr_scores = curr_scores_ls
-                                full_curr_scores_ls.append(curr_scores.item())
-                                continue
-                            # else:
-                                # curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
-                            if self.algebra_method == one or self.algebra_method == three:
-                                curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
-                            elif self.algebra_method == two:
-                                curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
-                                
-                                # curr_scores_ls_max_id = torch.argmax(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
+                        # if len(sub_corpus_embeddings.shape) == 2 and sub_corpus_embeddings.shape[0] > 1:
+                        if curr_query_embedding.shape[0] == 1:
+                            if self.is_img_retrieval:
+                                curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
                             else:
-                                curr_scores_ls = self.compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr)
+                                curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
+                            curr_scores = curr_scores_ls
+                            full_curr_scores_ls.append(curr_scores.item())
+                            continue
+                        # else:
+                            # curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
+                        if self.algebra_method == one or self.algebra_method == three:
+                            curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
+                        elif self.algebra_method == two:
+                            curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
+                            
+                            # curr_scores_ls_max_id = torch.argmax(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
+                        else:
+                            curr_scores_ls = self.compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr)
                                 # curr_scores_ls2 = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
                                 
-                        else:    
-                            curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))
+                        # else:    
+                        #     curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))
                         
                         # whole_img_sim = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device)).view(-1)
                         # curr_scores = torch.prod(curr_scores_ls, dim=0)

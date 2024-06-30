@@ -14,7 +14,7 @@ import random
 def sampling_sample_ids(X_ls):
     num_passages = len(X_ls)
 
-    typical_doclen = 120  # let's keep sampling independent of the actual doc_maxlen
+    typical_doclen = 1  # let's keep sampling independent of the actual doc_maxlen
     sampled_pids = 16 * np.sqrt(typical_doclen * num_passages)
     # sampled_pids = int(2 ** np.floor(np.log2(1 + sampled_pids)))
     sampled_pids = min(1 + int(sampled_pids), num_passages)
@@ -40,15 +40,19 @@ def sampling_and_clustering(X_ls, clustering_count_ratio=0.1):
     X = torch.cat(X_ls, dim=0)
     sampled_pids = sampling_sample_ids(X_ls)
     sampled_patch_X = sampling_patch_ids(X_ls, sampled_pids)
-    cluster_count = min(int(len(sampled_patch_X)*clustering_count_ratio), 10)
+    cluster_count = max(int(len(sampled_patch_X)*clustering_count_ratio), 10)
     print("sampled data count::", len(sampled_patch_X))
-    kmeans = KMeans(n_clusters=cluster_count, random_state=0).fit(sampled_patch_X)
-    centroids = torch.from_numpy(kmeans.cluster_centers_).float()
+    # print("cluster count::", cluster_count)
+    centroid_ls, _ = online_clustering(sampled_patch_X, closeness_threshold=clustering_count_ratio)
+    # kmeans = KMeans(n_clusters=cluster_count, random_state=0).fit(sampled_patch_X)
+    centroids = torch.stack(centroid_ls) #torch.from_numpy(kmeans.cluster_centers_).float()
     
-    clustering_labels = torch.nn.functional.cosine_similarity(X.unsqueeze(1), centroids.unsqueeze(0)).argmax(dim=1)
+    print("cluster count::", len(centroids))
+    
+    # clustering_labels = torch.nn.functional.cosine_similarity(X.unsqueeze(1), centroids.unsqueeze(0)).argmax(dim=1)
     
     
-    return centroids, clustering_labels
+    return centroids
 
 
 def online_clustering(X, closeness_threshold=0.1):

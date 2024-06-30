@@ -7,9 +7,101 @@ import heapq
 from heapq import heappush, heappop
 import torch
 from tqdm import tqdm
-
+# from torch.nn.functional import cosine_similarity
 
 LABEL_T = TypeVar('LABEL_T', np.uint8, np.uint16, np.uint32)
+
+
+def cos_sim(a: torch.Tensor, b: torch.Tensor):
+    """
+    Computes the cosine similarity cos_sim(a[i], b[j]) for all i and j.
+    :return: Matrix with res[i][j]  = cos_sim(a[i], b[j])
+    """
+    if not isinstance(a, torch.Tensor):
+        a = torch.tensor(a)
+
+    if not isinstance(b, torch.Tensor):
+        b = torch.tensor(b)
+
+    if len(a.shape) == 1:
+        a = a.unsqueeze(0)
+
+    if len(b.shape) == 1:
+        b = b.unsqueeze(0)
+
+    a_norm = torch.nn.functional.normalize(a, p=2, dim=1)
+    b_norm = torch.nn.functional.normalize(b, p=2, dim=1)
+    return torch.mm(a_norm, b_norm.transpose(0, 1)) #TODO: this keeps allocating GPU memory
+
+def compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, prob_agg = "prod", is_img_retrieval=False, dependency_topk=50, valid_patch_ids=None):
+        if grouped_sub_q_ids_ls[query_itr] is not None:
+            curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_q_ls_idx]
+        else:
+            curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
+        
+        if prob_agg == "prod":
+            curr_scores_ls= 1
+        else:
+            curr_scores_ls = 0
+        # curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
+        if is_img_retrieval:
+            curr_sub_corpus_embeddings = sub_corpus_embeddings[0:-1]
+        else:
+            curr_sub_corpus_embeddings = sub_corpus_embeddings
+        for curr_grouped_sub_q_ids in curr_grouped_sub_q_ids_ls:
+            
+            selected_embedding_idx = torch.arange(curr_sub_corpus_embeddings.shape[0])
+            beam_search_topk=min(dependency_topk, curr_sub_corpus_embeddings.shape[0])
+            if prob_agg == "prod":
+                sub_curr_scores = torch.ones(1).to(device)
+            else:
+                sub_curr_scores = torch.zeros(1).to(device)
+            selected_patch_ids_ls = None
+            for sub_query_idx in range(len(curr_grouped_sub_q_ids)): #range(curr_query_embedding.shape[0]):
+                # print(curr_grouped_sub_q_ids, sub_query_idx)
+                if valid_patch_ids is not None:
+                    selected_embedding_idx = torch.tensor(list(set(selected_embedding_idx.tolist()).intersection(valid_patch_ids)))
+                
+                curr_prod_mat = cos_sim(curr_query_embedding[curr_grouped_sub_q_ids[sub_query_idx]].to(device), curr_sub_corpus_embeddings[selected_embedding_idx].to(device)).view(-1,1)
+                if prob_agg == "prod":
+                    curr_prod_mat[curr_prod_mat < 0] = 0
+                    prod_mat = curr_prod_mat*sub_curr_scores.view(1,-1)
+                else:
+                    prod_mat = curr_prod_mat+sub_curr_scores.view(1,-1)
+
+                # beam_search_topk=max(20, int(torch.numel(prod_mat)*0.05) + 1)
+                # print("beam_search_topk::", beam_search_topk)
+                sub_curr_scores_ls, topk_ids = torch.topk(prod_mat.view(-1), k=min(beam_search_topk, torch.numel(prod_mat)), dim=-1)
+                topk_emb_ids = topk_ids // prod_mat.shape[1]
+                
+                topk_emb_ids = selected_embedding_idx.to(device)[topk_emb_ids].tolist()
+                # topk_emb_ids = list(set(topk_emb_ids.tolist()))
+                if sub_query_idx == 0:
+                    selected_patch_ids_ls = [[emb_id] for emb_id in topk_emb_ids]
+                    # selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in topk_emb_ids])
+                else:
+                    selected_seq_ids = topk_ids%prod_mat.shape[1]
+                    curr_selected_patch_ids_ls = [selected_patch_ids_ls[selected_seq_ids[selected_seq_id_idx]]+ [topk_emb_ids[selected_seq_id_idx]] for selected_seq_id_idx in range(len(selected_seq_ids))]
+                    selected_patch_ids_ls = curr_selected_patch_ids_ls
+                    # curr_selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in topk_emb_ids])
+                    # selected_embedding_idx = torch.tensor(list(set(torch.cat([selected_embedding_idx, curr_selected_embedding_idx]).tolist())))
+                existing_topk_emb_ids = set()
+                for selected_patch_ids in selected_patch_ids_ls:
+                    existing_topk_emb_ids.update(selected_patch_ids)
+                # selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in existing_topk_emb_ids])
+                selected_embedding_idx = set()
+                for topk_id in existing_topk_emb_ids:
+                    selected_embedding_idx.update(bboxes_overlap_ls[corpus_idx][topk_id])
+                selected_embedding_idx = torch.tensor(list(selected_embedding_idx))
+                sub_curr_scores = sub_curr_scores_ls
+            if prob_agg == "prod":
+                sub_curr_scores[sub_curr_scores <= 0] = 0
+                curr_scores_ls *= torch.max(sub_curr_scores)
+                assert torch.all(curr_scores_ls >= 0).item()
+            else:
+                curr_scores_ls += torch.max(sub_curr_scores)
+                
+        return curr_scores_ls
 
 class TinyTable:
     def __init__(self, num_tables: int, hash_range: int, num_elements: LABEL_T, hashes: torch.tensor):
@@ -292,8 +384,61 @@ class MaxFlashArray:
         hashes = self.hash(batch)
         self._maxflash_array.append(MaxFlash(self._hash_function.num_tables(), self._hash_function.range(), num_elements, hashes))
         return len(self._maxflash_array) - 1
-
-    def get_document_scores(self, query: torch.tensor, documents_to_query: torch.tensor, method="two", query_idx=None, query_sub_idx =None, device="cuda", is_img_retrieval=False, prob_agg="sum", **kwargs):
+    
+    def compute_score_full(self, curr_query_embedding, sub_corpus_embeddings, algebra_method="two", prob_agg="prod", device="cuda", corpus_idx=None, grouped_sub_q_ids_ls=None, sub_q_ls_idx=None, bboxes_overlap_ls=None, query_itr=None, is_img_retrieval=False):
+        if curr_query_embedding.shape[0] == 1:
+            if is_img_retrieval:
+                curr_scores_ls = cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
+            else:
+                curr_scores_ls = torch.max(cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
+            curr_scores = curr_scores_ls
+            return curr_scores.item()
+        # else:
+            # curr_scores_ls = torch.max(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
+        # if self.algebra_method == one or self.algebra_method == three:
+        #     curr_scores_ls = self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
+        if algebra_method == "two":
+            curr_scores_ls = torch.max(cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
+            
+            # curr_scores_ls_max_id = torch.argmax(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
+        else:
+            curr_scores_ls = compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, is_img_retrieval=is_img_retrieval)
+                # curr_scores_ls2 = torch.max(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
+                
+        # else:    
+        #     curr_scores_ls = self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device))
+        
+        # whole_img_sim = self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device)).view(-1)
+        # curr_scores = torch.prod(curr_scores_ls, dim=0)
+        # for conj_id in range(len(curr_scores_ls)):
+        #     curr_scores *= curr_scores_ls[conj_id]
+        # full_curr_scores += curr_scores
+        # if self.algebra_method == one:
+        #     curr_scores = torch.max(torch.prod(curr_scores_ls, dim=0))
+        #     full_curr_scores_ls.append(curr_scores.item())
+        # elif self.algebra_method == three:
+        #     curr_scores = torch.max(torch.sum(curr_scores_ls, dim=0))
+        #     # curr_scores = torch.max(torch.max(curr_scores_ls, dim=0))
+        #     full_curr_scores_ls.append(curr_scores.item())
+        if algebra_method == "two":
+            
+            # if torch.sum(curr_scores_ls - whole_img_sim > 0.2) > 0:
+            #     print()
+            
+            # curr_scores_ls[curr_scores_ls2 - whole_img_sim > 0.2] = whole_img_sim[curr_scores_ls2 - whole_img_sim > 0.2]
+            # curr_scores_ls[whole_img_sim - curr_scores_ls2 > 0.2] = curr_scores_ls2[whole_img_sim - curr_scores_ls2 > 0.2]
+            if prob_agg == "prod":
+                curr_scores_ls[curr_scores_ls < 0] = 0
+                curr_scores = torch.prod(curr_scores_ls)
+            else:
+                curr_scores = torch.sum(curr_scores_ls)
+            # curr_scores = torch.sum(curr_scores_ls)
+            # curr_scores = torch.sum(curr_scores_ls)
+        else:
+            curr_scores = curr_scores_ls
+        return curr_scores.item()
+        
+    def get_document_scores(self, document_embs_ls:list, query: torch.tensor, documents_to_query: torch.tensor, method="two", query_idx=None, query_sub_idx =None, device="cuda", is_img_retrieval=False, prob_agg="sum",grouped_sub_q_ids_ls=None,bboxes_overlap_ls=None, **kwargs):
         hashes = self.hash(query)
         num_vectors_in_query = query.shape[0]
         # print("query hashes::", hashes)
@@ -307,6 +452,8 @@ class MaxFlashArray:
                 buffer = torch.zeros(self._max_allowable_doc_size, dtype=torch.int32, device=device)
                 self._collision_count_to_sim = self._collision_count_to_sim.to(device)
                 score = self._maxflash_array[flash_index].get_score_dependency(hashes, num_vectors_in_query, buffer, self._collision_count_to_sim, query_itr=query_idx, corpus_idx=flash_index, sub_q_ls_idx=query_sub_idx,device=device, is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, **kwargs)
+            
+            # score = self.compute_score_full(query, document_embs_ls[flash_index], method, prob_agg, device, corpus_idx=flash_index,grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, sub_q_ls_idx=query_sub_idx, bboxes_overlap_ls=bboxes_overlap_ls, query_itr=query_idx, is_img_retrieval=is_img_retrieval)
             return score
 
         # with ThreadPoolExecutor() as executor:
@@ -316,7 +463,7 @@ class MaxFlashArray:
             results.append(compute_score(i))
 
         # return np.array(results)
-        return torch.stack(results)
+        return torch.tensor(results)
 
     def hash(self, batch: torch.tensor) -> torch.tensor:
         num_vectors, dim = batch.shape
@@ -356,11 +503,13 @@ class DocRetrieval:
 
         self._nprobe_query = min(len(centroids), self._nprobe_query)
 
-        self._document_array = MaxFlashArray(SparseRandomProjection(dense_input_dimension, hashes_per_table, num_tables), hashes_per_table, doc_size*10)
+        self._document_array = MaxFlashArray(SparseRandomProjection(dense_input_dimension, hashes_per_table, num_tables), hashes_per_table, doc_size)
         # self._centroids = np.transpose(centroids)
         self._centroids = torch.t(centroids)
+        self.doc_embs_ls = []
 
     def add_doc(self, doc_embeddings: torch.tensor, doc_id: str) -> bool:
+        self.doc_embs_ls.append(doc_embeddings)
         centroid_ids = self.getNearestCentroids(doc_embeddings, 1)
         return self.add_doc_with_centroids(doc_embeddings, doc_id, centroid_ids)
 
@@ -378,11 +527,11 @@ class DocRetrieval:
 
         return True
 
-    def query(self, query_embeddings: torch.tensor, top_k: int, num_to_rerank: int, prob_agg="prod", **kwargs):
+    def query(self, document_embs_ls:list, query_embeddings: torch.tensor, top_k: int, num_to_rerank: int, prob_agg="prod", **kwargs):
         centroid_ids = self.getNearestCentroids(query_embeddings, self._nprobe_query)
-        return self.query_with_centroids(query_embeddings, centroid_ids, top_k, num_to_rerank, prob_agg=prob_agg, **kwargs)
+        return self.query_with_centroids(document_embs_ls, query_embeddings, centroid_ids, top_k, num_to_rerank, prob_agg=prob_agg, **kwargs)
 
-    def query_multi_queries(self, query_embedding_ls, top_k: int, num_to_rerank: int, prob_agg="prod", **kwargs):
+    def query_multi_queries(self, document_embs_ls, query_embedding_ls, top_k: int, num_to_rerank: int, prob_agg="prod", **kwargs):
         all_cos_scores = []
         query_ids = [str(idx+1) for idx in list(range(len(query_embedding_ls)))]
         corpus_ids = [str(idx+1) for idx in list(range(len(self._document_array._maxflash_array)))]
@@ -390,20 +539,25 @@ class DocRetrieval:
         query_count = len(query_embedding_ls)
         
         all_cos_scores_tensor = torch.zeros(query_count, len(query_embedding_ls[0]), len(corpus_ids))
+        expected_idx_ls = []
         for idx in tqdm(range(query_count)): #, desc="Querying":
             cos_scores_ls=[]
             for sub_idx in range(len(query_embedding_ls[idx])):
-                cos_scores,sample_ids = self.query(query_embedding_ls[idx][sub_idx], top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, query_sub_idx =sub_idx, **kwargs)
+                cos_scores,sample_ids = self.query(document_embs_ls, query_embedding_ls[idx][sub_idx], top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, query_sub_idx =sub_idx, **kwargs)
                 # cos_scores_ls.append(cos_scores)
-                cos_scores_ls[:, sub_idx, sample_ids] = cos_scores
-            cos_scores = torch.stack(cos_scores_ls)
-            all_cos_scores.append(cos_scores)        
-        all_cos_scores_tensor = torch.stack(all_cos_scores)
+                # if sub_idx == 0:
+                #     # print(idx, idx in sample_ids, sample_ids)
+                #     if idx in sample_ids:
+                #         expected_idx_ls.append(idx)
+                all_cos_scores_tensor[idx, sub_idx, sample_ids] = cos_scores.cpu()
+        #     cos_scores = torch.stack(cos_scores_ls)
+        #     all_cos_scores.append(cos_scores)        
+        # all_cos_scores_tensor = torch.stack(all_cos_scores)
 
         all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
         # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
         all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
-        # print(all_cos_scores_tensor)
+        print(all_cos_scores_tensor.shape)
         #Get top-k values
         cos_scores_top_k_values, cos_scores_top_k_idx = torch.topk(all_cos_scores_tensor, min(top_k+1, len(all_cos_scores_tensor[0])), dim=1, largest=True)#, sorted=return_sorted)
         cos_scores_top_k_values = cos_scores_top_k_values.cpu().tolist()
@@ -418,7 +572,7 @@ class DocRetrieval:
                 all_results[query_id][corpus_id] = score
         return all_results
 
-    def query_with_centroids(self, embeddings: torch.tensor, centroid_ids: torch.tensor, top_k: int, num_to_rerank: int, method="two", prob_agg="prod", **kwargs):
+    def query_with_centroids(self, document_embs_ls:list, embeddings: torch.tensor, centroid_ids: torch.tensor, top_k: int, num_to_rerank: int, method="two", prob_agg="prod", **kwargs):
         num_vectors_in_query = embeddings.shape[0]
         dense_dim = embeddings.shape[1]
         if dense_dim != self._dense_dim:
@@ -432,7 +586,7 @@ class DocRetrieval:
 
         top_k_internal_ids = self.frequencyCountCentroidBuckets(centroid_ids, num_to_rerank)
         top_k_internal_ids = remove_duplicates(top_k_internal_ids)
-        sum_sim = self.rankDocuments(embeddings, top_k_internal_ids, method=method, **kwargs)
+        sum_sim = self.rankDocuments(document_embs_ls, embeddings, top_k_internal_ids, method=method, **kwargs)
 
         # result_size = min(len(reranked), top_k)
         # result = [self._internal_id_to_doc_id[reranked[i]] for i in range(result_size)]
@@ -440,19 +594,19 @@ class DocRetrieval:
         # return result
         
         
-        sorted_indices = argsort_descending(sum_sim).cpu()
+        # sorted_indices = argsort_descending(sum_sim).cpu()
         # print(sum_sim)
         
-        return sum_sim, top_k_internal_ids[sorted_indices]
+        return sum_sim, top_k_internal_ids #[sorted_indices]
         # return scores
 
-    def rankDocuments(self, query_embeddings: torch.tensor, internal_ids_to_rerank: torch.tensor, method="two", **kwargs):
-        document_scores = self.getScores(query_embeddings, internal_ids_to_rerank, method=method, **kwargs)
+    def rankDocuments(self, document_embs_ls: list, query_embeddings: torch.tensor, internal_ids_to_rerank: torch.tensor, method="two", **kwargs):
+        document_scores = self.getScores(document_embs_ls, query_embeddings, internal_ids_to_rerank, method=method, **kwargs)
         
         return document_scores
 
-    def getScores(self, query_embeddings: torch.tensor, internal_ids_to_rerank: torch.tensor, method="two", **kwargs):
-        return self._document_array.get_document_scores(query_embeddings, internal_ids_to_rerank, method=method, **kwargs)
+    def getScores(self, document_embs_ls: list, query_embeddings: torch.tensor, internal_ids_to_rerank: torch.tensor, method="two", **kwargs):
+        return self._document_array.get_document_scores(document_embs_ls, query_embeddings, internal_ids_to_rerank, method=method, **kwargs)
 
     def getNearestCentroids(self, batch: torch.tensor, nprobe: int):
         num_vectors = batch.shape[0]
