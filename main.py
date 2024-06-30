@@ -63,7 +63,7 @@ def embed_queries_with_input_queries(query_ls, processor, model, device):
             text_emb_ls.append(text_features.cpu())
     return text_emb_ls
 
-def embed_queries_ls(full_sub_queries_ls, processor, model, device):
+def embed_queries_ls(model_name, full_sub_queries_ls, processor, model, device):
     text_emb_ls = []
     with torch.no_grad():
         # for filename, caption in tqdm(filename_cap_mappings.items()):
@@ -75,8 +75,13 @@ def embed_queries_ls(full_sub_queries_ls, processor, model, device):
                 for subquery in sub_queries:
                     # caption = filename_cap_mappings[file_name]
                     inputs = processor(subquery)
-                    inputs = {key: val.to(device) for key, val in inputs.items()}
-                    text_features = model.get_text_features(**inputs)
+                    if model_name == "default":
+                        inputs = {key: val.to(device) for key, val in inputs.items()}
+                        text_features = model.get_text_features(**inputs)
+                    elif model_name == "blip":
+                        text_features = model.extract_features({"text_input":inputs}, mode="text").text_embeds_proj[:,0,:].view(1,-1)
+                    else:
+                        raise ValueError("Invalid model name")
                     sub_text_feature_ls.append(text_features.cpu())
                 # text_features = outputs.last_hidden_state[:, 0, :]
                 sub_text_emb_ls.append(sub_text_feature_ls)
@@ -219,7 +224,7 @@ if __name__ == "__main__":
             from lavis.models import load_model_and_preprocess
             model, vis_processors, txt_processors = load_model_and_preprocess(name="blip_feature_extractor", model_type="base", is_eval=True, device=device)
             text_processor = lambda text: txt_processors["eval"](text)
-            processor =  vis_processors# lambda images: vis_processors(images=images, return_tensors="pt")["pixel_values"]
+            processor =  lambda images: torch.stack([vis_processors["eval"](image) for image in images])
         
         model = model.eval()
     else:
@@ -507,7 +512,7 @@ if __name__ == "__main__":
             # full_sub_queries_ls = sub_queries_ls
             full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
                 # full_sub_queries_ls = [[sub_queries_ls[idx]] for idx in range(len(sub_queries_ls))]
-            text_emb_ls = embed_queries_ls(full_sub_queries_ls, text_processor, model, device)
+            text_emb_ls = embed_queries_ls(args.model_name, full_sub_queries_ls, text_processor, model, device)
             # text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)
         else:
             # if args.dataset_name == "flickr":
