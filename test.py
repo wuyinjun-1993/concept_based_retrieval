@@ -62,7 +62,8 @@ print("similarity::", torch.nn.functional.cosine_similarity(doc_embds_ls[-1].uns
 #   query_data  = torch.rand(15,dense_input_dimension)
 #   torch.save(query_data, 'output/query_data.pt')
 # print(query_data)
-_,result = retrieval_method.query(doc_embds_ls[-1], top_k=5, num_to_rerank=5)
+# _,result = retrieval_method.query(doc_embds_ls[-1], top_k=5, num_to_rerank=5)
+result = retrieval_method.query_multi_queries([[doc_embds_ls[-1]]], top_k=5, num_to_rerank=5)
 # result = retrieval_method.query(doc_embds_ls[-1].numpy(), top_k=5, num_to_rerank=len(doc_embds_ls))
 
 print(result)
