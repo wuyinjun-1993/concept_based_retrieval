@@ -202,23 +202,34 @@ class SparseRandomProjection:
             self._random_bits[i * self._sample_size:(i + 1) * self._sample_size] = ((torch.randint(0, 2, (self._sample_size,)) * 2) - 1)
         del a
 
-    def hash_single_dense(self, values: torch.tensor, dim: int, output: torch.tensor):
-        assert values.shape[0] == dim
+    # def hash_single_dense(self, values: torch.tensor, dim: int, output: torch.tensor):
+    #     assert values.shape[0] == dim
 
-        for table in range(self._num_tables):
-          table_sum = 0
-          for srp in range(self._srps_per_table):
-            # Corrected slices to include srp in the calculation
-            start_index = table * self._srps_per_table * self._sample_size + srp * self._sample_size
-            end_index = start_index + self._sample_size
+    #     for table in range(self._num_tables):
+    #       table_sum = 0
+    #       for srp in range(self._srps_per_table):
+    #         # Corrected slices to include srp in the calculation
+    #         start_index = table * self._srps_per_table * self._sample_size + srp * self._sample_size
+    #         end_index = start_index + self._sample_size
 
-            bit_indices = self._hash_indices[start_index:end_index]
-            bits = self._random_bits[start_index:end_index]
+    #         bit_indices = self._hash_indices[start_index:end_index]
+    #         bits = self._random_bits[start_index:end_index]
 
-            s = torch.sum(bits * values[bit_indices])
-            to_add = (s > 0) << srp
-            table_sum += to_add
-          output[table] = table_sum
+    #         s = torch.sum(bits * values[bit_indices])
+    #         to_add = (s > 0) << srp
+    #         table_sum += to_add
+    #       output[table] = table_sum
+    def hash_single_dense(self, values: torch.Tensor, dim: int, output: torch.Tensor):
+        assert values.size(0) == dim
+        hash_indices = self._hash_indices.view(self._num_tables, self._srps_per_table, self._sample_size)
+        random_bits = self._random_bits.view(self._num_tables, self._srps_per_table, self._sample_size)
+        gathered_values = values[hash_indices]
+        products = gathered_values * random_bits
+        sums = torch.sum(products, dim=2)
+        binary_values = (sums > 0).int()
+        powers_of_two = 2 ** torch.arange(self._srps_per_table, device=values.device)
+        table_sums = torch.sum(binary_values * powers_of_two, dim=1)
+        output[:] = table_sums
 
     def num_tables(self) -> int:
         return self._num_tables
@@ -377,7 +388,7 @@ class MaxFlashArray:
                 self._collision_count_to_sim[collision_count] = np.exp(np.log(table_collision_probability) / hashes_per_table)
             else:
                 self._collision_count_to_sim[collision_count] = 0.0
-
+    # @profile
     def add_document(self, batch: torch.tensor) -> int:
         num_vectors = batch.shape[0]
         num_elements = min(num_vectors, self._max_allowable_doc_size)
@@ -465,28 +476,36 @@ class MaxFlashArray:
         # return np.array(results)
         return torch.tensor(results)
 
-    def hash(self, batch: torch.tensor) -> torch.tensor:
-        num_vectors, dim = batch.shape
-        output = torch.zeros(num_vectors * self._hash_function.num_tables(), dtype=torch.int32)
+    # def hash(self, batch: torch.tensor) -> torch.tensor:
+    #     num_vectors, dim = batch.shape
+    #     output = torch.zeros(num_vectors * self._hash_function.num_tables(), dtype=torch.int32)
 
-        def compute_hash(i):
-            data = batch[i]
-            start_index = i * self._hash_function.num_tables()
-            end_index = (i + 1) * self._hash_function.num_tables()
-            self._hash_function.hash_single_dense(data, dim, output[start_index:end_index])
+    #     def compute_hash(i):
+    #         data = batch[i]
+    #         start_index = i * self._hash_function.num_tables()
+    #         end_index = (i + 1) * self._hash_function.num_tables()
+    #         self._hash_function.hash_single_dense(data, dim, output[start_index:end_index])
 
-        # with ThreadPoolExecutor() as executor:
-        #     list(executor.map(compute_hash, range(num_vectors)))
-        results = []
+    #     # with ThreadPoolExecutor() as executor:
+    #     #     list(executor.map(compute_hash, range(num_vectors)))
+    #     results = []
+    #     for i in range(num_vectors):
+    #         curr_res = compute_hash(i)
+    #         results.append(curr_res)
+    #         # list(executor.map(compute_hash, range(num_vectors)))
+    #     # print("doc hash::", output)
+    #     return output
+    def hash(self, batch: torch.Tensor) -> torch.Tensor:
+        num_vectors, dim = batch.size()
+        output = torch.zeros((num_vectors, self._hash_function.num_tables()), dtype=torch.int32, device=batch.device)
+
         for i in range(num_vectors):
-            curr_res = compute_hash(i)
-            results.append(curr_res)
-            # list(executor.map(compute_hash, range(num_vectors)))
-        # print("doc hash::", output)
-        return output
+            self._hash_function.hash_single_dense(batch[i], dim, output[i])
+
+        return output.view(-1)
 
 class DocRetrieval:
-    def __init__(self, doc_size:int, hashes_per_table: int, num_tables: int, dense_input_dimension: int, centroids: torch.tensor):
+    def __init__(self, doc_size:int, hashes_per_table: int, num_tables: int, dense_input_dimension: int, centroids: torch.tensor, device="cpu"):
         self._dense_dim = dense_input_dimension
         self._nprobe_query = 2
         self._largest_internal_id = 0
@@ -507,12 +526,14 @@ class DocRetrieval:
         # self._centroids = np.transpose(centroids)
         self._centroids = torch.t(centroids)
         self.doc_embs_ls = []
+        self._device = device
 
+    # @profile
     def add_doc(self, doc_embeddings: torch.tensor, doc_id: str) -> bool:
         self.doc_embs_ls.append(doc_embeddings)
         centroid_ids = self.getNearestCentroids(doc_embeddings, 1)
         return self.add_doc_with_centroids(doc_embeddings, doc_id, centroid_ids)
-
+    # @profile
     def add_doc_with_centroids(self, doc_embeddings: torch.tensor, doc_id: str, doc_centroid_ids: torch.tensor) -> bool:
         internal_id = self._document_array.add_document(doc_embeddings)
         self._largest_internal_id = max(self._largest_internal_id, internal_id)
@@ -608,22 +629,26 @@ class DocRetrieval:
     def getScores(self, document_embs_ls: list, query_embeddings: torch.tensor, internal_ids_to_rerank: torch.tensor, method="two", **kwargs):
         return self._document_array.get_document_scores(document_embs_ls, query_embeddings, internal_ids_to_rerank, method=method, **kwargs)
 
-    def getNearestCentroids(self, batch: torch.tensor, nprobe: int):
-        num_vectors = batch.shape[0]
-        eigen_result = torch.matmul(batch, self._centroids)
-        nearest_centroids = torch.zeros(num_vectors * nprobe, dtype=torch.int32)
+    # def getNearestCentroids(self, batch: torch.tensor, nprobe: int):
+    #     num_vectors = batch.shape[0]
+    #     eigen_result = torch.matmul(batch, self._centroids)
+    #     nearest_centroids = torch.zeros(num_vectors * nprobe, dtype=torch.int32)
 
-        def process_row(i):
-          probe_results = argmax(eigen_result[i], nprobe)
-          for p in range(nprobe):
-            nearest_centroids[i * nprobe + p] = probe_results[p]
+    #     def process_row(i):
+    #       probe_results = argmax(eigen_result[i], nprobe)
+    #       for p in range(nprobe):
+    #         nearest_centroids[i * nprobe + p] = probe_results[p]
 
-        with ThreadPoolExecutor() as executor:
-          executor.map(process_row, range(num_vectors))
+    #     with ThreadPoolExecutor() as executor:
+    #       executor.map(process_row, range(num_vectors))
 
-        nearest_centroids = torch.unique(nearest_centroids)
-        # return np.array(nearest_centroids)
-        return torch.tensor(nearest_centroids)
+    #     nearest_centroids = torch.unique(nearest_centroids)
+    #     # return np.array(nearest_centroids)
+    #     return torch.tensor(nearest_centroids)
+    def getNearestCentroids(self, batch: torch.Tensor, nprobe: int):
+        eigen_result = torch.matmul(batch.to(self._device), self._centroids)
+        nearest_centroids = torch.topk(eigen_result, nprobe, dim=1).indices.view(-1)
+        return torch.unique(nearest_centroids)
 
     def frequencyCountCentroidBuckets(self, centroid_ids, num_to_rerank):
         # Initialize the count buffer

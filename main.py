@@ -203,6 +203,7 @@ if __name__ == "__main__":
                     handlers=[LoggingHandler()])
 
     args = parse_args()
+    print(args)
     args.is_img_retrieval = args.dataset_name in image_retrieval_datasets
     set_rand_seed(args.random_seed)
 
@@ -461,7 +462,7 @@ if __name__ == "__main__":
                 # centroids = torch.zeros([1, patch_emb_by_img_ls[-1].shape[-1]])
                 # hashes_per_table: int, num_tables
                 max_patch_count = max([len(patch_emb_by_img_ls[idx]) for idx in range(len(patch_emb_by_img_ls))])
-                retrieval_method = DocRetrieval(max_patch_count, args.hashes_per_table, args.num_tables, patch_emb_by_img_ls[-1].shape[-1], centroids)
+                retrieval_method = DocRetrieval(max_patch_count, args.hashes_per_table, args.num_tables, patch_emb_by_img_ls[-1].shape[-1], centroids, device=device)
 
                 for idx in tqdm(range(len(patch_emb_by_img_ls)), desc="add doc"):
                     retrieval_method.add_doc(patch_emb_by_img_ls[idx], idx)
