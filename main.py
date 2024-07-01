@@ -152,6 +152,7 @@ def parse_args():
     parser.add_argument("--add_sparse_index", action="store_true", help="config file")
     
     parser.add_argument('--retrieval_method', type=str, default="ours", help='config file')
+    parser.add_argument('--index_method', type=str, default="default", choices=["default", "dessert"], help='config file')
     parser.add_argument('--hashes_per_table', type=int, default=5, help='config file')
     # num_tables
     parser.add_argument('--num_tables', type=int, default=100, help='config file')
@@ -454,18 +455,24 @@ if __name__ == "__main__":
             
             # patch_clustering_info_cached_file = get_clustering_res_file_name(args, patch_count_ls)
             
-            patch_clustering_info_cached_file = get_dessert_clustering_res_file_name(samples_hash, patch_count_ls)
+            
+            patch_clustering_info_cached_file = get_dessert_clustering_res_file_name(samples_hash, patch_count_ls, clustering_count_ratio=args.closeness_threshold, index_method=args.index_method)
             
             if not os.path.exists(patch_clustering_info_cached_file):
             
-                centroids =sampling_and_clustering(patch_emb_by_img_ls, clustering_count_ratio=args.closeness_threshold)
+                centroid_file_name = get_clustering_res_file_name(args, samples_hash, patch_count_ls)
+                if os.path.exists(centroid_file_name):
+                    centroids = torch.load(centroid_file_name)
+                else:
+                    centroids =sampling_and_clustering(patch_emb_by_img_ls, clustering_count_ratio=args.closeness_threshold)
+                    torch.save(centroids, centroid_file_name)
                 # centroids = torch.zeros([1, patch_emb_by_img_ls[-1].shape[-1]])
                 # hashes_per_table: int, num_tables
                 max_patch_count = max([len(patch_emb_by_img_ls[idx]) for idx in range(len(patch_emb_by_img_ls))])
                 retrieval_method = DocRetrieval(max_patch_count, args.hashes_per_table, args.num_tables, patch_emb_by_img_ls[-1].shape[-1], centroids, device=device)
 
                 for idx in tqdm(range(len(patch_emb_by_img_ls)), desc="add doc"):
-                    retrieval_method.add_doc(patch_emb_by_img_ls[idx], idx)
+                    retrieval_method.add_doc(patch_emb_by_img_ls[idx], idx, index_method=args.index_method)
                 
                 # utils.save(retrieval_method, "output/retrieval_method.pkl")
                 utils.save(retrieval_method, patch_clustering_info_cached_file)
@@ -568,7 +575,7 @@ if __name__ == "__main__":
             else:
                 # results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
                 # grouped_sub_q_ids_ls, bboxes_overlap_ls, dependency_topk, device, prob_agg, is_img_retrieval
-                results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, clustering_topk=args.clustering_topk, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk, device=device, is_img_retrieval=args.is_img_retrieval, method=args.algebra_method)
+                results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, clustering_topk=args.clustering_topk, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk, device=device, is_img_retrieval=args.is_img_retrieval, method=args.algebra_method, index_method=args.index_method)
     # elif args.retrieval_method == "llm_ranker":
     #     ranker = LLM_ranker(corpus)
     #     results = ranker.retrieval(queries)

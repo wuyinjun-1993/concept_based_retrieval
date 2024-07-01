@@ -213,16 +213,20 @@ def get_patch_count_str(patch_count_ls):
     patch_count_str = "_".join([str(patch_count) for patch_count in patch_count_ls])
     return patch_count_str
 
-def get_clustering_res_file_name(args, patch_count_ls):
+def get_clustering_res_file_name(args, hashes, patch_count_ls):
     patch_count_str = get_patch_count_str(patch_count_ls)
-    patch_clustering_info_cached_file =  f"output/saved_patches_{args.dataset_name}_{patch_count_str}.pkl"
-    return patch_clustering_info_cached_file
+    
+    centroid_ls_file_name=f"output/centroid_ls_{hashes}_{patch_count_str}_{args.closeness_threshold}.pt"
+    
+    # patch_clustering_info_cached_file =  f"output/saved_patches_{args.dataset_name}_{patch_count_str}.pkl"
+    return centroid_ls_file_name
 
 
-def get_dessert_clustering_res_file_name(hashes, patch_count_ls):
+def get_dessert_clustering_res_file_name(hashes, patch_count_ls,clustering_count_ratio=0.2, index_method="default"):
     patch_count_str = get_patch_count_str(patch_count_ls)
-    patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}.pkl"
+    patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_count_ratio}.pkl"
     return patch_clustering_info_cached_file
+
 # 0.12 for trec covid 10000
 # 0.2
 def clustering_img_patch_embeddings(X_by_img_ls, dataset_name, X_ls, closeness_threshold = 0.1):
