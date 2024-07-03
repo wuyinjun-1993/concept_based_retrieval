@@ -259,108 +259,120 @@ class DenseRetrievalExactSearch:
         
         # all_sub_corpus_embedding_ls = [item.to(device) for item in all_sub_corpus_embedding_ls]
         corpus_idx = 0
-        for sub_corpus_embeddings in tqdm(all_sub_corpus_embedding_ls):    
-            #Compute similarites using either cosine-similarity or dot product
-            cos_scores = []
-            # for query_itr in range(len(query_embeddings)):
-            for query_itr in range(query_count):
-                curr_query_embedding_ls = query_embeddings[query_itr]
-                if type(curr_query_embedding_ls) is list:
-                    full_curr_scores_ls = []
-                    # for conj_id in range(len(curr_query_embedding)):
-                    #     curr_cos_scores_ls = self.score_functions[score_function](torch.stack(curr_query_embedding[conj_id]), sub_corpus_embeddings)
-                    #     if query_negations is not None and query_negations[query_itr] is not None:
-                    #         curr_query_negations = torch.tensor(query_negations[query_itr])
-                    #         curr_cos_scores_ls[curr_query_negations == 1] =  - curr_cos_scores_ls[curr_query_negations == 1]
-
-                    #     curr_cos_scores_ls[torch.isnan(curr_cos_scores_ls)] = -1
-
-                    #     curr_cos_scores = 1
-                    #     for idx in range(len(curr_cos_scores_ls)):
-                    #         curr_cos_scores *= curr_cos_scores_ls[idx]
-                    #     curr_scores += curr_cos_scores
-                    for sub_q_ls_idx in range(len(curr_query_embedding_ls)):
-                        curr_query_embedding = curr_query_embedding_ls[sub_q_ls_idx]
-                        curr_scores = 1
-                        
-                        # if len(sub_corpus_embeddings.shape) == 2 and sub_corpus_embeddings.shape[0] > 1:
-                        if curr_query_embedding.shape[0] == 1:
-                            if self.is_img_retrieval:
-                                curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
-                            else:
-                                curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
-                            curr_scores = curr_scores_ls
-                            full_curr_scores_ls.append(curr_scores.item())
-                            continue
-                        # else:
-                            # curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
-                        if self.algebra_method == one or self.algebra_method == three:
-                            curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
-                        elif self.algebra_method == two:
-                            curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
-                            
-                            # curr_scores_ls_max_id = torch.argmax(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
-                        else:
-                            curr_scores_ls = self.compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr)
-                                # curr_scores_ls2 = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
-                                
-                        # else:    
-                        #     curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))
-                        
-                        # whole_img_sim = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device)).view(-1)
-                        # curr_scores = torch.prod(curr_scores_ls, dim=0)
-                        # for conj_id in range(len(curr_scores_ls)):
-                        #     curr_scores *= curr_scores_ls[conj_id]
-                        # full_curr_scores += curr_scores
-                        if self.algebra_method == one:
-                            curr_scores = torch.max(torch.prod(curr_scores_ls, dim=0))
-                            full_curr_scores_ls.append(curr_scores.item())
-                        elif self.algebra_method == three:
-                            curr_scores = torch.max(torch.sum(curr_scores_ls, dim=0))
-                            # curr_scores = torch.max(torch.max(curr_scores_ls, dim=0))
-                            full_curr_scores_ls.append(curr_scores.item())
-                        elif self.algebra_method == two:
-                            
-                            # if torch.sum(curr_scores_ls - whole_img_sim > 0.2) > 0:
-                            #     print()
-                            
-                            # curr_scores_ls[curr_scores_ls2 - whole_img_sim > 0.2] = whole_img_sim[curr_scores_ls2 - whole_img_sim > 0.2]
-                            # curr_scores_ls[whole_img_sim - curr_scores_ls2 > 0.2] = curr_scores_ls2[whole_img_sim - curr_scores_ls2 > 0.2]
-                            if self.prob_agg == "prod":
-                                curr_scores_ls[curr_scores_ls < 0] = 0
-                                curr_scores = torch.prod(curr_scores_ls)
-                            else:
-                                curr_scores = torch.sum(curr_scores_ls)
-                            # curr_scores = torch.sum(curr_scores_ls)
-                            # curr_scores = torch.sum(curr_scores_ls)
-                            full_curr_scores_ls.append(curr_scores.item())
-                        else:
-                            curr_scores = curr_scores_ls
-                            full_curr_scores_ls.append(curr_scores.item())
-                    
-                    curr_scores = torch.tensor(full_curr_scores_ls)
-                    
-                else:
-                    # curr_cos_scores = self.score_functions[score_function](curr_query_embedding.unsqueeze(0), sub_corpus_embeddings)
-                    curr_cos_scores = self.score_functions[score_function](curr_query_embedding_ls.to(device), sub_corpus_embeddings.to(device))
-                    curr_cos_scores[torch.isnan(curr_cos_scores)] = -1
-                    curr_scores = curr_cos_scores.squeeze(0)
-                    if len(curr_scores) > 1:
-                        curr_scores = torch.max(curr_scores, dim=-1)[0]
-                    curr_scores = curr_scores.view(-1)
-                cos_scores.append(curr_scores)
-            cos_scores = torch.stack(cos_scores)
-            all_cos_scores.append(cos_scores)
-            
-            corpus_idx += 1
         
-        all_cos_scores_tensor = torch.stack(all_cos_scores, dim=-1)
-        if sparse_sim_scores is not None:
-            all_cos_scores_tensor = torch.cat([all_cos_scores_tensor, sparse_sim_scores.to(device).unsqueeze(1)], dim=1)
-        all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
-        # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
-        all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
-        print(all_cos_scores_tensor)
+        
+        if type(all_sub_corpus_embedding_ls) is list:
+            for sub_corpus_embeddings in tqdm(all_sub_corpus_embedding_ls):    
+                #Compute similarites using either cosine-similarity or dot product
+                cos_scores = []
+                # for query_itr in range(len(query_embeddings)):
+                for query_itr in range(query_count):
+                    curr_query_embedding_ls = query_embeddings[query_itr]
+                    if type(curr_query_embedding_ls) is list:
+                        full_curr_scores_ls = []
+                        # for conj_id in range(len(curr_query_embedding)):
+                        #     curr_cos_scores_ls = self.score_functions[score_function](torch.stack(curr_query_embedding[conj_id]), sub_corpus_embeddings)
+                        #     if query_negations is not None and query_negations[query_itr] is not None:
+                        #         curr_query_negations = torch.tensor(query_negations[query_itr])
+                        #         curr_cos_scores_ls[curr_query_negations == 1] =  - curr_cos_scores_ls[curr_query_negations == 1]
+
+                        #     curr_cos_scores_ls[torch.isnan(curr_cos_scores_ls)] = -1
+
+                        #     curr_cos_scores = 1
+                        #     for idx in range(len(curr_cos_scores_ls)):
+                        #         curr_cos_scores *= curr_cos_scores_ls[idx]
+                        #     curr_scores += curr_cos_scores
+                        for sub_q_ls_idx in range(len(curr_query_embedding_ls)):
+                            curr_query_embedding = curr_query_embedding_ls[sub_q_ls_idx]
+                            curr_scores = 1
+                            
+                            # if len(sub_corpus_embeddings.shape) == 2 and sub_corpus_embeddings.shape[0] > 1:
+                            if curr_query_embedding.shape[0] == 1:
+                                if self.is_img_retrieval:
+                                    curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
+                                else:
+                                    curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
+                                curr_scores = curr_scores_ls
+                                full_curr_scores_ls.append(curr_scores.item())
+                                continue
+                            # else:
+                                # curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
+                            if self.algebra_method == one or self.algebra_method == three:
+                                curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
+                            elif self.algebra_method == two:
+                                curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
+                                
+                                # curr_scores_ls_max_id = torch.argmax(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
+                            else:
+                                curr_scores_ls = self.compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr)
+                                    # curr_scores_ls2 = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
+                                    
+                            # else:    
+                            #     curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))
+                            
+                            # whole_img_sim = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device)).view(-1)
+                            # curr_scores = torch.prod(curr_scores_ls, dim=0)
+                            # for conj_id in range(len(curr_scores_ls)):
+                            #     curr_scores *= curr_scores_ls[conj_id]
+                            # full_curr_scores += curr_scores
+                            if self.algebra_method == one:
+                                curr_scores = torch.max(torch.prod(curr_scores_ls, dim=0))
+                                full_curr_scores_ls.append(curr_scores.item())
+                            elif self.algebra_method == three:
+                                curr_scores = torch.max(torch.sum(curr_scores_ls, dim=0))
+                                # curr_scores = torch.max(torch.max(curr_scores_ls, dim=0))
+                                full_curr_scores_ls.append(curr_scores.item())
+                            elif self.algebra_method == two:
+                                
+                                # if torch.sum(curr_scores_ls - whole_img_sim > 0.2) > 0:
+                                #     print()
+                                
+                                # curr_scores_ls[curr_scores_ls2 - whole_img_sim > 0.2] = whole_img_sim[curr_scores_ls2 - whole_img_sim > 0.2]
+                                # curr_scores_ls[whole_img_sim - curr_scores_ls2 > 0.2] = curr_scores_ls2[whole_img_sim - curr_scores_ls2 > 0.2]
+                                if self.prob_agg == "prod":
+                                    curr_scores_ls[curr_scores_ls < 0] = 0
+                                    curr_scores = torch.prod(curr_scores_ls)
+                                else:
+                                    curr_scores = torch.sum(curr_scores_ls)
+                                # curr_scores = torch.sum(curr_scores_ls)
+                                # curr_scores = torch.sum(curr_scores_ls)
+                                full_curr_scores_ls.append(curr_scores.item())
+                            else:
+                                curr_scores = curr_scores_ls
+                                full_curr_scores_ls.append(curr_scores.item())
+                        
+                        curr_scores = torch.tensor(full_curr_scores_ls)
+                        
+                    else:
+                        # curr_cos_scores = self.score_functions[score_function](curr_query_embedding.unsqueeze(0), sub_corpus_embeddings)
+                        curr_cos_scores = self.score_functions[score_function](curr_query_embedding_ls.to(device), sub_corpus_embeddings.to(device))
+                        curr_cos_scores[torch.isnan(curr_cos_scores)] = -1
+                        curr_scores = curr_cos_scores.squeeze(0)
+                        if len(curr_scores) > 1:
+                            curr_scores = torch.max(curr_scores, dim=-1)[0]
+                        curr_scores = curr_scores.view(-1)
+                    cos_scores.append(curr_scores)
+                cos_scores = torch.stack(cos_scores)
+                all_cos_scores.append(cos_scores)
+                
+                corpus_idx += 1
+        
+            all_cos_scores_tensor = torch.stack(all_cos_scores, dim=-1)
+            if sparse_sim_scores is not None:
+                all_cos_scores_tensor = torch.cat([all_cos_scores_tensor, sparse_sim_scores.to(device).unsqueeze(1)], dim=1)
+            all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
+            # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
+            all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+            print(all_cos_scores_tensor)
+        
+        else:
+            all_cos_scores_tensor_ls = []
+            for query_itr in range(query_count):
+                curr_query_embedding = query_embeddings[query_itr].view(1,-1)
+                all_cos_scores_tensor_ls.append(self.score_functions[score_function](curr_query_embedding.to(device), all_sub_corpus_embedding_ls.to(device)))
+            
+            all_cos_scores_tensor = torch.cat(all_cos_scores_tensor_ls)
+            print(all_cos_scores_tensor.shape)
         #Get top-k values
         cos_scores_top_k_values, cos_scores_top_k_idx = torch.topk(all_cos_scores_tensor, min(top_k+1, len(all_cos_scores_tensor[0])), dim=1, largest=True)#, sorted=return_sorted)
         cos_scores_top_k_values = cos_scores_top_k_values.cpu().tolist()

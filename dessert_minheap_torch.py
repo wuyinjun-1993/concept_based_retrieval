@@ -726,7 +726,7 @@ class DocRetrieval:
     #     return torch.tensor(result)
     
     def frequencyCountCentroidBuckets(self, centroid_ids: torch.Tensor, num_to_rerank: int):
-        count_buffer = torch.zeros(self._largest_internal_id + 1, dtype=torch.int32, device=centroid_ids.device)
+        count_buffer = torch.zeros(self._largest_internal_id + 1, dtype=torch.int32, device=self._device)
         for centroid_id in centroid_ids:
             count_buffer.index_add_(0, self._centroid_id_to_internal_id[centroid_id], torch.ones_like(self._centroid_id_to_internal_id[centroid_id], dtype=torch.int32))
         top_counts, top_indices = torch.topk(count_buffer, num_to_rerank)
