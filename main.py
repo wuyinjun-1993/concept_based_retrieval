@@ -156,6 +156,8 @@ def parse_args():
     parser.add_argument('--hashes_per_table', type=int, default=5, help='config file')
     # num_tables
     parser.add_argument('--num_tables', type=int, default=100, help='config file')
+    parser.add_argument('--clustering_doc_count_factor', type=int, default=1, help='config file')
+    parser.add_argument('--clustering_number', type=float, default=0.1, help='config file')
     
     
     args = parser.parse_args()
@@ -456,15 +458,15 @@ if __name__ == "__main__":
             # patch_clustering_info_cached_file = get_clustering_res_file_name(args, patch_count_ls)
             
             
-            patch_clustering_info_cached_file = get_dessert_clustering_res_file_name(samples_hash, patch_count_ls, clustering_count_ratio=args.closeness_threshold, index_method=args.index_method)
+            patch_clustering_info_cached_file = get_dessert_clustering_res_file_name(samples_hash, patch_count_ls, clustering_number=args.clustering_number, index_method=args.index_method, typical_doclen=args.clustering_doc_count_factor)
             
-            if not os.path.exists(patch_clustering_info_cached_file):
+            if True:# not os.path.exists(patch_clustering_info_cached_file):
             
                 centroid_file_name = get_clustering_res_file_name(args, samples_hash, patch_count_ls)
-                if os.path.exists(centroid_file_name):
+                if False: #os.path.exists(centroid_file_name):
                     centroids = torch.load(centroid_file_name)
                 else:
-                    centroids =sampling_and_clustering(patch_emb_by_img_ls, clustering_count_ratio=args.closeness_threshold)
+                    centroids =sampling_and_clustering(patch_emb_by_img_ls, dataset_name=args.dataset_name, clustering_number=args.clustering_number, typical_doclen=args.clustering_doc_count_factor)
                     torch.save(centroids, centroid_file_name)
                 # centroids = torch.zeros([1, patch_emb_by_img_ls[-1].shape[-1]])
                 # hashes_per_table: int, num_tables
@@ -504,8 +506,8 @@ if __name__ == "__main__":
             if args.query_count > 0:
                 sub_queries_ls = [sub_queries_ls[idx] for idx in subset_q_idx]
                 grouped_sub_q_ids_ls = [grouped_sub_q_ids_ls[idx] for idx in subset_q_idx]
-            print("sub_q_index::", subset_q_idx)
-            print("qrels::", qrels)
+            # print("sub_q_index::", subset_q_idx)
+            # print("qrels::", qrels)
     
     
     

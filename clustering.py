@@ -10,11 +10,12 @@ from sklearn.cluster import DBSCAN
 from sklearn.cluster import KMeans
 import os
 import random
+import faiss
 
-def sampling_sample_ids(X_ls):
+def sampling_sample_ids(X_ls, typical_doclen):
     num_passages = len(X_ls)
 
-    typical_doclen = 1  # let's keep sampling independent of the actual doc_maxlen
+    # typical_doclen = 1  # let's keep sampling independent of the actual doc_maxlen
     sampled_pids = 16 * np.sqrt(typical_doclen * num_passages)
     # sampled_pids = int(2 ** np.floor(np.log2(1 + sampled_pids)))
     sampled_pids = min(1 + int(sampled_pids), num_passages)
@@ -24,29 +25,73 @@ def sampling_sample_ids(X_ls):
     return sampled_pids
 
 
-def sampling_patch_ids(X_ls, patch_ids):
+def sampling_patch_ids0(X_ls, patch_ids):
+    selected_patch_X = []
+    for pid in tqdm(patch_ids, desc="Sampling patch ids"):
+        curr_X = X_ls[pid]
+        # curr_X = curr_X/ torch.norm(curr_X, dim=1, keepdim=True)
+        # kmeans = KMeans(n_clusters=int(len(curr_X)*0.2), random_state=0).fit(curr_X)
+        # # kmeans_labels = kmeans.labels_
+        # centroids = torch.from_numpy(kmeans.cluster_centers_).float()
+        # centroids = centroids/ torch.norm(centroids, dim=1, keepdim=True)
+        # closest_sample_ids = torch.matmul(curr_X, centroids.T).argmax(dim=0)
+        selected_patch_X.append(curr_X)
+    return torch.cat(selected_patch_X)
+
+def sampling_patch_ids(X_ls, patch_ids, clustering_number=0.1):
     selected_patch_X = []
     for pid in tqdm(patch_ids, desc="Sampling patch ids"):
         curr_X = X_ls[pid]
         curr_X = curr_X/ torch.norm(curr_X, dim=1, keepdim=True)
-        kmeans = KMeans(n_clusters=int(len(curr_X)*0.2), random_state=0).fit(curr_X)
+        # kmeans = KMeans(n_clusters=int(len(curr_X)*0.2), random_state=0).fit(curr_X)
         # kmeans_labels = kmeans.labels_
-        centroids = torch.from_numpy(kmeans.cluster_centers_).float()
-        closest_sample_ids = torch.nn.functional.cosine_similarity(curr_X.unsqueeze(1), centroids.unsqueeze(0)).argmax(dim=0)
+        # centroids = torch.from_numpy(kmeans.cluster_centers_).float()
+        
+        clustering = DBSCAN(eps=0.01, min_samples=1, metric="cosine").fit(curr_X.cpu().numpy())
+        centroid_ls = [torch.mean(curr_X[clustering.labels_ == label], dim=0) for label in range(len(np.unique(clustering.labels_)))]
+        centroids = torch.stack(centroid_ls)
+        
+        
+        centroids = centroids/ torch.norm(centroids, dim=1, keepdim=True)
+        closest_sample_ids = torch.matmul(curr_X, centroids.T).argmax(dim=0)
         selected_patch_X.append(curr_X[closest_sample_ids])
     return torch.cat(selected_patch_X)
 
-def sampling_and_clustering(X_ls, clustering_count_ratio=0.1):
-    X = torch.cat(X_ls, dim=0)
-    sampled_pids = sampling_sample_ids(X_ls)
-    sampled_patch_X = sampling_patch_ids(X_ls, sampled_pids)
-    cluster_count = max(int(len(sampled_patch_X)*clustering_count_ratio), 10)
+def compute_faiss_kmeans(dim, num_partitions, kmeans_niters, sample_embeddings):
+    sample_embeddings = sample_embeddings/ torch.norm(sample_embeddings, dim=-1, keepdim=True)
+    use_gpu = torch.cuda.is_available()
+    print("is gpu available::", use_gpu)
+    kmeans = faiss.Kmeans(dim, num_partitions, niter=kmeans_niters, gpu=use_gpu, verbose=True, seed=123)
+    # kmeans = faiss.Kmeans(dim, num_partitions, gpu=use_gpu, verbose=True, seed=123)
+    sample = sample_embeddings.float().numpy()
+    kmeans.train(sample)
+    centroids = torch.from_numpy(kmeans.centroids)
+    centroids = centroids/torch.norm(centroids, dim=-1, keepdim=True)
+    # if use_gpu:
+    #   centroids = centroids.half()    
+    # else:
+    #   centroids = centroids.float()
+    return centroids
+
+def sampling_and_clustering(X_ls, dataset_name, clustering_number=0.1, typical_doclen=1):
+    if dataset_name == "crepe":
+        sampled_patch_X = torch.cat(X_ls, dim=0)
+    else:
+        sampled_pids = sampling_sample_ids(X_ls, typical_doclen=typical_doclen)
+        # sampled_patch_X = sampling_patch_ids0(X_ls, sampled_pids)
+        sampled_patch_X = sampling_patch_ids(X_ls, sampled_pids, clustering_number=clustering_number)
+    cluster_count = int(clustering_number*len(sampled_patch_X)) # max(int(len(sampled_patch_X)*clustering_count_ratio), 10)
     print("sampled data count::", len(sampled_patch_X))
-    # print("cluster count::", cluster_count)
-    centroid_ls, _ = online_clustering(sampled_patch_X, closeness_threshold=clustering_count_ratio)
-    # kmeans = KMeans(n_clusters=cluster_count, random_state=0).fit(sampled_patch_X)
-    centroids = torch.stack(centroid_ls) #torch.from_numpy(kmeans.cluster_centers_).float()
+    print("cluster count::", cluster_count)
+    num_partitions = cluster_count
+    centroids = compute_faiss_kmeans(sampled_patch_X.shape[-1], num_partitions, 100, sampled_patch_X)
+    # centroid_ls, _ = online_clustering(sampled_patch_X, closeness_threshold=clustering_number)
+    # # # # kmeans = KMeans(n_clusters=cluster_count, random_state=0).fit(sampled_patch_X)
+    # centroids = torch.stack(centroid_ls) #torch.from_numpy(kmeans.cluster_centers_).float()
     
+    # clustering = DBSCAN(eps=clustering_number, min_samples=1, metric="cosine").fit(sampled_patch_X.cpu().numpy())
+    # centroid_ls = [torch.mean(sampled_patch_X[clustering.labels_ == label], dim=0) for label in range(len(np.unique(clustering.labels_)))]
+    # centroids = torch.stack(centroid_ls)
     print("cluster count::", len(centroids))
     
     # clustering_labels = torch.nn.functional.cosine_similarity(X.unsqueeze(1), centroids.unsqueeze(0)).argmax(dim=1)
@@ -215,16 +260,21 @@ def get_patch_count_str(patch_count_ls):
 
 def get_clustering_res_file_name(args, hashes, patch_count_ls):
     patch_count_str = get_patch_count_str(patch_count_ls)
-    
-    centroid_ls_file_name=f"output/centroid_ls_{hashes}_{patch_count_str}_{args.closeness_threshold}.pt"
+    if args.clustering_doc_count_factor == 1:
+        centroid_ls_file_name=f"output/centroid_ls_{hashes}_{patch_count_str}_{args.clustering_number}.pt"
+    else:
+        centroid_ls_file_name=f"output/centroid_ls_{hashes}_{patch_count_str}_{args.clustering_number}_doclen_{args.clustering_doc_count_factor}.pt"
     
     # patch_clustering_info_cached_file =  f"output/saved_patches_{args.dataset_name}_{patch_count_str}.pkl"
     return centroid_ls_file_name
 
 
-def get_dessert_clustering_res_file_name(hashes, patch_count_ls,clustering_count_ratio=0.2, index_method="default"):
+def get_dessert_clustering_res_file_name(hashes, patch_count_ls,clustering_number=1000, index_method="default", typical_doclen=1):
     patch_count_str = get_patch_count_str(patch_count_ls)
-    patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_count_ratio}.pkl"
+    if typical_doclen == 1:
+        patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_number}.pkl"
+    else:
+        patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_number}_doclen_{typical_doclen}.pkl"
     return patch_clustering_info_cached_file
 
 # 0.12 for trec covid 10000

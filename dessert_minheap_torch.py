@@ -38,7 +38,7 @@ def compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddin
             curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_q_ls_idx]
         else:
             curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
-        
+        # print("dependency topk::", dependency_topk)
         if prob_agg == "prod":
             curr_scores_ls= 1
         else:
@@ -415,7 +415,7 @@ class MaxFlashArray:
             self._maxflash_array.append(MaxFlash(self._hash_function.num_tables(), self._hash_function.range(), num_elements, hashes))
         return len(self._maxflash_array) - 1
     
-    def compute_score_full(self, curr_query_embedding, sub_corpus_embeddings, algebra_method="two", prob_agg="prod", device="cuda", corpus_idx=None, grouped_sub_q_ids_ls=None, sub_q_ls_idx=None, bboxes_overlap_ls=None, query_itr=None, is_img_retrieval=False):
+    def compute_score_full(self, curr_query_embedding, sub_corpus_embeddings, algebra_method="two", prob_agg="prod", device="cuda", corpus_idx=None, grouped_sub_q_ids_ls=None, sub_q_ls_idx=None, bboxes_overlap_ls=None, query_itr=None, is_img_retrieval=False,dependency_topk=50, **kwargs):
         if curr_query_embedding.shape[0] == 1:
             if is_img_retrieval:
                 curr_scores_ls = cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
@@ -432,7 +432,7 @@ class MaxFlashArray:
             
             # curr_scores_ls_max_id = torch.argmax(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
         else:
-            curr_scores_ls = compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, is_img_retrieval=is_img_retrieval)
+            curr_scores_ls = compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, is_img_retrieval=is_img_retrieval, dependency_topk=dependency_topk)
                 # curr_scores_ls2 = torch.max(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
                 
         # else:    
@@ -477,7 +477,7 @@ class MaxFlashArray:
             flash_index = documents_to_query[i]
             
             if index_method == "default":
-                score = self.compute_score_full(query, document_embs_ls[flash_index].to(self._device), method, prob_agg, device, corpus_idx=flash_index,grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, sub_q_ls_idx=query_sub_idx, bboxes_overlap_ls=bboxes_overlap_ls, query_itr=query_idx, is_img_retrieval=is_img_retrieval)
+                score = self.compute_score_full(query, document_embs_ls[flash_index].to(self._device), method, prob_agg, device, corpus_idx=flash_index,grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, sub_q_ls_idx=query_sub_idx, bboxes_overlap_ls=bboxes_overlap_ls, query_itr=query_idx, is_img_retrieval=is_img_retrieval, **kwargs)
             else:
                 if method == "two":
                     buffer = np.zeros(self._max_allowable_doc_size, dtype=np.uint32)
@@ -573,7 +573,7 @@ class DocRetrieval:
     #     return True
     # @profile
     def add_doc_with_centroids(self, doc_embeddings: torch.Tensor, doc_id: str, doc_centroid_ids: torch.Tensor, index_method="default") -> bool:
-        internal_id = self._document_array.add_document(doc_embeddings.to(self._device), index_method=index_method)
+        internal_id = self._document_array.add_document(doc_embeddings, index_method=index_method)
         self._largest_internal_id = max(self._largest_internal_id, internal_id)
 
         for centroid_id in doc_centroid_ids:
@@ -686,44 +686,51 @@ class DocRetrieval:
         # eigen_result = torch.matmul(batch.to(self._device), self._centroids.to(self._device))
         eigen_result = cos_sim(batch.to(self._device), self._centroids.T.to(self._device))
         nearest_centroids = torch.topk(eigen_result, nprobe, dim=1).indices.view(-1)
-        return torch.unique(nearest_centroids)
+        return torch.unique(nearest_centroids).cpu()
 
-    def frequencyCountCentroidBuckets(self, centroid_ids, num_to_rerank):
-        # Initialize the count buffer
-    #   count_buffer = np.zeros(self._largest_internal_id + 1, dtype=np.int32)
+    # def frequencyCountCentroidBuckets(self, centroid_ids, num_to_rerank):
+    #     # Initialize the count buffer
+    # #   count_buffer = np.zeros(self._largest_internal_id + 1, dtype=np.int32)
+    #     count_buffer = torch.zeros(self._largest_internal_id + 1, dtype=torch.int32, device=self._device)
+
+    #     def process_centroid_id(count_buffer, centroid_id):
+    #         # np.add.at(count_buffer, self._centroid_id_to_internal_id[centroid_id], 1)
+    #         count_buffer[self._centroid_id_to_internal_id[centroid_id]] += 1
+    #         return count_buffer
+
+    #     # Parallel counting of internal IDs
+    #     with ThreadPoolExecutor() as executor:
+    #         executor.map(process_centroid_id, centroid_ids)
+    #     for cid in centroid_ids.tolist():
+    #         count_buffer = process_centroid_id(count_buffer, cid)
+    #     # Find the indices of the top_k counts
+    #     heap = []
+
+    #     for centroid_id in centroid_ids:
+    #         for internal_id in self._centroid_id_to_internal_id[centroid_id]:
+    #             if count_buffer[internal_id] < 0:
+    #                 continue
+    #             count = count_buffer[internal_id]
+    #             count_buffer[internal_id] = -1
+    #             if len(heap) < num_to_rerank or count > heap[0][0]:
+    #                 heapq.heappush(heap, (count, internal_id))
+    #             if len(heap) > num_to_rerank:
+    #                 heapq.heappop(heap)
+
+    #     result = []
+    #     while heap:
+    #         result.append(heapq.heappop(heap)[1])
+
+    #     result.reverse()
+    # #   return np.array(result)
+    #     return torch.tensor(result)
+    
+    def frequencyCountCentroidBuckets(self, centroid_ids: torch.Tensor, num_to_rerank: int):
         count_buffer = torch.zeros(self._largest_internal_id + 1, dtype=torch.int32, device=centroid_ids.device)
-
-        def process_centroid_id(count_buffer, centroid_id):
-            # np.add.at(count_buffer, self._centroid_id_to_internal_id[centroid_id], 1)
-            count_buffer[self._centroid_id_to_internal_id[centroid_id]] += 1
-            return count_buffer
-
-        # Parallel counting of internal IDs
-        with ThreadPoolExecutor() as executor:
-            executor.map(process_centroid_id, centroid_ids)
-        for cid in centroid_ids:
-            count_buffer = process_centroid_id(count_buffer, cid)
-        # Find the indices of the top_k counts
-        heap = []
-
         for centroid_id in centroid_ids:
-            for internal_id in self._centroid_id_to_internal_id[centroid_id]:
-                if count_buffer[internal_id] < 0:
-                    continue
-                count = count_buffer[internal_id]
-                count_buffer[internal_id] = -1
-                if len(heap) < num_to_rerank or count > heap[0][0]:
-                    heapq.heappush(heap, (count, internal_id))
-                if len(heap) > num_to_rerank:
-                    heapq.heappop(heap)
-
-        result = []
-        while heap:
-            result.append(heapq.heappop(heap)[1])
-
-        result.reverse()
-    #   return np.array(result)
-        return torch.tensor(result)
+            count_buffer.index_add_(0, self._centroid_id_to_internal_id[centroid_id], torch.ones_like(self._centroid_id_to_internal_id[centroid_id], dtype=torch.int32))
+        top_counts, top_indices = torch.topk(count_buffer, num_to_rerank)
+        return top_indices
 
     def serialize_to_file(self, filename: str):
         with open(filename, 'wb') as f:
