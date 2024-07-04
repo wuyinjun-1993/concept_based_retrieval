@@ -110,8 +110,7 @@ class TinyTable:
         self._num_elements = num_elements
         self._num_tables = num_tables
         self._table_start = self._num_tables * (self._hash_range + 1)
-        # self._index = torch.zeros((self._table_start + self._num_elements * self._num_tables,), dtype=torch.int32, device=device)
-        self._index = np.zeros((self._table_start + self._num_elements * self._num_tables,), dtype=np.int32)#, device=device)
+        self._index = torch.zeros((self._table_start + self._num_elements * self._num_tables,), dtype=torch.int32, device=device)
 
         for table in range(num_tables):
             # Generate inverted index from hashes to vec_ids
@@ -123,15 +122,13 @@ class TinyTable:
 
             # Populate bucket start and end offsets
             table_offsets_start = table * (self._hash_range + 1)
-            # self._index[table_offsets_start + 1:table_offsets_start + self._hash_range + 1] = torch.from_numpy(np.cumsum([len(temp_buckets[i]) for i in range(hash_range)]))
-            self._index[table_offsets_start + 1:table_offsets_start + self._hash_range + 1] = np.cumsum([len(temp_buckets[i]) for i in range(hash_range)])
+            self._index[table_offsets_start + 1:table_offsets_start + self._hash_range + 1] = torch.from_numpy(np.cumsum([len(temp_buckets[i]) for i in range(hash_range)]))
 
             # Populate hashes into table itself
             current_offset = self._table_start + self._num_elements * table
             for bucket in range(hash_range):
                 end_offset = current_offset + len(temp_buckets[bucket])
-                # self._index[current_offset:end_offset] = torch.tensor(temp_buckets[bucket])
-                self._index[current_offset:end_offset] = np.array(temp_buckets[bucket])
+                self._index[current_offset:end_offset] = torch.tensor(temp_buckets[bucket])
                 current_offset = end_offset
 
     # def query_by_count(self, hashes: torch.tensor, hash_offset: int, counts: torch.tensor, sub_patch_ids=None): #, copied_counts: torch.tensor):
@@ -146,14 +143,14 @@ class TinyTable:
     #         # print()
     #     return counts
     def query_by_count(self, hashes: torch.Tensor, hash_offset: int, counts: torch.Tensor):
-        # counts_copy = counts.clone()
-        table_array = np.arange(self._num_tables)# , device=self._device)
+        counts_copy = counts.clone()
+        table_array = torch.arange(self._num_tables, device=self._device)
         hash_value = hashes[hash_offset + table_array]
         start_offset = self._index[(self._hash_range + 1) * table_array + hash_value]
         end_offset = self._index[(self._hash_range + 1) * table_array + hash_value + 1]
         table_offset = self._table_start + table_array * self._num_elements
-        for idx in np.nonzero(end_offset > start_offset).reshape(-1).tolist():
-            counts[self._index.cpu().numpy()[table_offset[idx] + start_offset[idx]:table_offset[idx] + end_offset[idx]]] += 1
+        for idx in torch.nonzero(end_offset > start_offset).view(-1).tolist():
+            counts_copy[self._index[table_offset[idx] + start_offset[idx]:table_offset[idx] + end_offset[idx]]] += 1
             
         # for table in range(self._num_tables):
         #     hash_value = hashes[hash_offset + table].item()
@@ -269,14 +266,14 @@ class MaxFlash:
 
         self._hashtable.query_by_count(query_hashes, vec_id * self._hashtable.num_tables(), count_buffer)
         if sub_patch_ids is not None:
-            max_count = np.max(count_buffer)
+            max_count = torch.max(count_buffer)
         else:
-            max_count = np.max(count_buffer[sub_patch_ids])
+            max_count = torch.max(count_buffer[sub_patch_ids])
         return max_count
 
     def get_score(self, query_hashes: torch.tensor, num_elements: int,
                   count_buffer: torch.tensor, collision_count_to_sim: torch.tensor, prob_agg = "sum", is_img_retrieval=False):
-        results = np.zeros(num_elements, dtype=np.int32)
+        results = torch.zeros(num_elements, dtype=torch.int32)
 
         assert len(count_buffer) >= self._hashtable.num_elements()
 
@@ -291,11 +288,11 @@ class MaxFlash:
         full_scores = collision_count_to_sim[results]/num_elements
         
         if prob_agg == "sum":
-            sum_sim = np.sum(full_scores)
+            sum_sim = torch.sum(full_scores, dim=-1)
         else:
             sim_tensor = full_scores
             sim_tensor[sim_tensor < 0] = 0
-            sum_sim = np.prod(sim_tensor)
+            sum_sim = torch.prod(sim_tensor, dim=-1)
         return sum_sim
     
     def get_score_dependency(self, query_hashes: torch.tensor, num_elements: int,
@@ -496,8 +493,8 @@ class MaxFlashArray:
             else:
                 hashes = self.hash(query)
                 if method == "two":
-                    buffer = np.zeros(self._max_allowable_doc_size, dtype=np.int32) #, device=device)
-                    score = self._maxflash_array[flash_index].get_score(hashes.cpu().numpy(), num_vectors_in_query, buffer, self._collision_count_to_sim.cpu().numpy(), prob_agg=prob_agg, is_img_retrieval=is_img_retrieval)
+                    buffer = torch.zeros(self._max_allowable_doc_size, dtype=torch.int32, device=device)
+                    score = self._maxflash_array[flash_index].get_score(hashes, num_vectors_in_query, buffer, self._collision_count_to_sim, prob_agg=prob_agg, is_img_retrieval=is_img_retrieval)
                 else:
                     buffer = torch.zeros(self._max_allowable_doc_size, dtype=torch.int32, device=device)
                     self._collision_count_to_sim = self._collision_count_to_sim.to(device)
@@ -663,7 +660,7 @@ class DocRetrieval:
 
         top_k_internal_ids = self.frequencyCountCentroidBuckets(centroid_ids, num_to_rerank)
         top_k_internal_ids = remove_duplicates(top_k_internal_ids)
-        sum_sim = self.rankDocuments(document_embs_ls, embeddings, top_k_internal_ids.cpu().numpy(), method=method,prob_agg=prob_agg, **kwargs)
+        sum_sim = self.rankDocuments(document_embs_ls, embeddings, top_k_internal_ids, method=method,prob_agg=prob_agg, **kwargs)
 
         # result_size = min(len(reranked), top_k)
         # result = [self._internal_id_to_doc_id[reranked[i]] for i in range(result_size)]
