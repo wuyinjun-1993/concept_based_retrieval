@@ -328,9 +328,9 @@ if __name__ == "__main__":
             queries= read_queries_from_file(os.path.join(full_data_path, "queries.jsonl")) #, subset_img_id=args.subset_img_id)
         except:
             pass
-        query_key_ls = list(queries.keys())
+        query_key_ls = full_query_key_ls#list(queries.keys())
         # query_key_ls = random.sample(full_query_key_ls, 100)
-        query_key_ls = sorted(query_key_ls)
+        # query_key_ls = sorted(query_key_ls)
         sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls)
         print(sub_queries_ls)
         

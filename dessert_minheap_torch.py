@@ -747,7 +747,7 @@ class DocRetrieval:
         for centroid_id in centroid_ids:
             count_buffer.index_add_(0, self._centroid_id_to_internal_id[centroid_id], torch.ones_like(self._centroid_id_to_internal_id[centroid_id], dtype=torch.int32))
         top_counts, top_indices = torch.topk(count_buffer, num_to_rerank)
-        return top_indices[top_counts > 0]
+        return top_indices # [top_counts > 0]
 
     def serialize_to_file(self, filename: str):
         with open(filename, 'wb') as f:
