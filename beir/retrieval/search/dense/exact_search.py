@@ -362,14 +362,18 @@ class DenseRetrievalExactSearch:
                 all_cos_scores_tensor = torch.cat([all_cos_scores_tensor, sparse_sim_scores.to(device).unsqueeze(1)], dim=1)
             all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
             # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
+            # if self.prob_agg == "prod":
             all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+            # else:
+            #     all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
             print(all_cos_scores_tensor)
         
         else:
             all_cos_scores_tensor_ls = []
-            for query_itr in range(query_count):
+            for query_itr in tqdm(range(query_count)):
                 curr_query_embedding = query_embeddings[query_itr].view(1,-1)
-                all_cos_scores_tensor_ls.append(self.score_functions[score_function](curr_query_embedding.to(device), all_sub_corpus_embedding_ls.to(device)))
+                curr_score = self.score_functions[score_function](curr_query_embedding.to(device), all_sub_corpus_embedding_ls.to(device)).cpu()
+                all_cos_scores_tensor_ls.append(curr_score)
             
             all_cos_scores_tensor = torch.cat(all_cos_scores_tensor_ls)
             print(all_cos_scores_tensor.shape)

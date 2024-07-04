@@ -60,6 +60,8 @@ class SparseRandomProjection:
             self._hash_indices[i * self._sample_size:(i + 1) * self._sample_size] = torch.sort(a[:self._sample_size]).values
             self._random_bits[i * self._sample_size:(i + 1) * self._sample_size] = (torch.randint(0, 2, (self._sample_size,), device=device) * 2 - 1)
         del a
+        self.powers_of_two = 2 ** torch.arange(self._srps_per_table, device=device)
+
 
     def hash_single_dense(self, values: torch.Tensor, dim: int, output: torch.Tensor):
         assert values.size(0) == dim
@@ -69,8 +71,7 @@ class SparseRandomProjection:
         products = gathered_values * random_bits
         sums = torch.sum(products, dim=2)
         binary_values = (sums > 0).int()
-        powers_of_two = 2 ** torch.arange(self._srps_per_table, device=values.device)
-        table_sums = torch.sum(binary_values * powers_of_two, dim=1)
+        table_sums = torch.sum(binary_values * self.powers_of_two, dim=1)
         output[:] = table_sums
 
     def num_tables(self) -> int:
