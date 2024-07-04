@@ -504,7 +504,8 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=F
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6_2.csv")
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output.csv")
-    img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output3.csv")
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output3.csv")
+    img_caption_file_name = os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output_with_dependency3.csv")
 
     with open("prod_hard_negatives/selected_img_id_ls", "rb") as f:
         selected_img_id_ls = pickle.load(f)
@@ -589,8 +590,8 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=F
         img_file_name_ls.append(full_img_file_name)
         all_grouped_sub_q_ids_ls.append(grouped_sub_q_ids_ls)
         
-    # img_caption_file_name_output= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output3.csv")
-    # caption_pd.to_csv(img_caption_file_name_output, index=False)
+    img_caption_file_name_output= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output3.csv")
+    caption_pd.to_csv(img_caption_file_name_output, index=False)
     # return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls
     if subset_img_id is None:
         return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
