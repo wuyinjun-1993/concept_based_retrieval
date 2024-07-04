@@ -266,9 +266,9 @@ class MaxFlash:
 
         self._hashtable.query_by_count(query_hashes, vec_id * self._hashtable.num_tables(), count_buffer)
         if sub_patch_ids is not None:
-            max_count = torch.max(count_buffer)
-        else:
             max_count = torch.max(count_buffer[sub_patch_ids])
+        else:
+            max_count = torch.max(count_buffer)
         return max_count
 
     def get_score(self, query_hashes: torch.tensor, num_elements: int,
@@ -747,7 +747,7 @@ class DocRetrieval:
         for centroid_id in centroid_ids:
             count_buffer.index_add_(0, self._centroid_id_to_internal_id[centroid_id], torch.ones_like(self._centroid_id_to_internal_id[centroid_id], dtype=torch.int32))
         top_counts, top_indices = torch.topk(count_buffer, num_to_rerank)
-        return top_indices # [top_counts > 0]
+        return top_indices[top_counts > 0]
 
     def serialize_to_file(self, filename: str):
         with open(filename, 'wb') as f:
