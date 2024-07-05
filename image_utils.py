@@ -379,6 +379,20 @@ def load_sharegpt4v_datasets(data_path, query_path):
     return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls
 
 
+def load_mscoco_text_datasets(data_path, query_path, img_idx_ls):
+    # img_caption_file_name = query_path
+    # with open(img_caption_file_name, 'rb') as f:
+    # caption_pd = pickle.load(f)
+    
+    caption_pd = utils.load(os.path.join(query_path, "mscoco_40kdecomposed_dependencies_wholeexp.pkl"))
+        
+    caption_text_ls = []
+    for img_id in img_idx_ls:
+        curr_text = list(caption_pd[caption_pd['image_id'] == img_id]["llava_caption_text"])[0]
+        caption_text_ls.append(curr_text)
+        
+    return caption_text_ls
+
 def load_mscoco_datasets_from_cached_files(data_path, query_path):
     # img_caption_file_name = query_path
     # with open(img_caption_file_name, 'rb') as f:
@@ -599,6 +613,26 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=F
         print(sub_caption_ls[subset_img_id])
         return [caption_ls[subset_img_id]], [img_file_name_ls[subset_img_id]], [sub_caption_ls[subset_img_id]], [img_idx_ls[subset_img_id]], [all_grouped_sub_q_ids_ls[subset_img_id]]
 
+
+def load_crepe_text_datasets(data_path, query_path, img_idx_ls):
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
+    
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6_2.csv")
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output.csv")
+    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output3.csv")
+    img_caption_file_name = os.path.join(data_path, "df_crepe_500_llava_captions.pkl")
+
+    with open(img_caption_file_name, "rb") as f:
+        caption_pd = pickle.load(f)
+        
+    caption_text_ls = []
+    for img_id in img_idx_ls:
+        curr_text = list(caption_pd[caption_pd['image_id'] == img_id]["llava_caption_text"])[0]
+        caption_text_ls.append(curr_text)
+        
+    return caption_text_ls
+    
 def replace_comma_with_vertical_line(caption_pd, file_name):
     for idx in range(len(caption_pd)):
         caption_pd.iloc[idx]['caption_triples'] = caption_pd.iloc[idx]['caption_triples'].replace(",","|")

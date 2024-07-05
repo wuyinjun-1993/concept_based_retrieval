@@ -74,8 +74,14 @@ class SentenceBERT:
     def encode_corpus(self, corpus: Union[List[Dict[str, str]], Dict[str, List]], batch_size: int = 8, is_sparse=False, **kwargs) -> Union[List[Tensor], np.ndarray, Tensor]:
         if type(corpus) is dict:
             sentences = [(corpus["title"][i] + self.sep + corpus["text"][i]).strip() if "title" in corpus else corpus["text"][i].strip() for i in range(len(corpus['text']))]
+        elif type(corpus) is list:
+            try:
+                sentences = [(doc["title"] + self.sep + doc["text"]).strip() if "title" in doc else doc["text"].strip() for doc in corpus]
+            except:
+                sentences = corpus
+                pass
         else:
-            sentences = [(doc["title"] + self.sep + doc["text"]).strip() if "title" in doc else doc["text"].strip() for doc in corpus]
+            raise ValueError("Corpus must be either a list of dictionaries or a dictionary of lists")
         if is_sparse:
             sentences = [self.prefix + s + self.suffix for s in sentences]
         

@@ -232,6 +232,9 @@ if __name__ == "__main__":
             processor =  lambda images: torch.stack([vis_processors["eval"](image) for image in images])
         
         model = model.eval()
+        if args.add_sparse_index:
+            text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b", prefix = sparse_prefix, suffix=sparse_suffix)
+        
     else:
         # if args.dataset_name not in image_retrieval_datasets:
         # if not args.is_img_retrieval:
@@ -300,7 +303,8 @@ if __name__ == "__main__":
     
     elif args.dataset_name == "mscoco_40k":
         queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls= load_mscoco_datasets_from_cached_files(full_data_path, full_data_path)
-        
+        if  args.retrieval_method == "bm25" or args.add_sparse_index:
+            corpus = load_mscoco_text_datasets(full_data_path, img_idx_ls)
         # queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_sharegpt4v_datasets(full_data_path, full_data_path)
         # img_idx_ls, img_file_name_ls = load_other_sharegpt4v_mscoco_images(full_data_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
     
@@ -312,6 +316,8 @@ if __name__ == "__main__":
         # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
         img_idx_ls, img_file_name_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
         # args.algebra_method=two
+        if  args.retrieval_method == "bm25" or args.add_sparse_index:
+            corpus = load_crepe_text_datasets(full_data_path, query_path, img_idx_ls)
         
     elif args.dataset_name == "crepe_full":
         # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets(full_data_path, query_path)
@@ -429,7 +435,9 @@ if __name__ == "__main__":
         # else:
         #     cached_img_ls, img_emb, patch_emb_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, samples_hash, model, img_file_name_ls, img_idx_ls, processor, device, patch_count_ls=patch_count_ls,save_mask_bbox=args.save_mask_bbox)
             
-        
+        if args.add_sparse_index:
+            img_sparse_emb = construct_dense_or_sparse_encodings(args, corpus, text_model, samples_hash, is_sparse=True)
+            store_sparse_index(samples_hash, img_sparse_emb, encoding_query = False)
 
     elif args.dataset_name in text_retrieval_datasets:
         samples_hash,(img_emb, img_sparse_index), patch_emb_ls, bboxes_ls = convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_count_ls=patch_count_ls)
@@ -533,10 +541,10 @@ if __name__ == "__main__":
     else:
         if not args.query_concept:
             # text_emb_ls = text_model.encode_queries(queries, convert_to_tensor=True)
-            text_emb_ls, query_sparse_index = construct_dense_or_sparse_encodings_queries(queries, text_model, args.add_sparse_index)
+            text_emb_ls, _ = construct_dense_or_sparse_encodings_queries(queries, text_model, args.add_sparse_index)
                     
         else:
-            _, query_sparse_index = construct_dense_or_sparse_encodings_queries(queries, text_model, args.add_sparse_index)
+            
             full_sub_queries_ls = sub_queries_ls
             # full_sub_queries_ls = [sub_queries_ls[idx] + [[reformated_queries[idx]]] for idx in range(len(sub_queries_ls))]
             text_emb_ls = encode_sub_queries_ls(full_sub_queries_ls, text_model)
@@ -544,12 +552,13 @@ if __name__ == "__main__":
             text_emb_ls = [text_emb_ls[idx] + [text_emb_dense[idx].unsqueeze(0)] for idx in range(len(text_emb_ls))]
             
         
-        if args.add_sparse_index:
-            store_sparse_index(samples_hash, query_sparse_index, encoding_query = True)
-            # text_emb_ls = text_retrieval_model.model.encode_queries(queries, convert_to_tensor=True)
-    
-            run_search_with_sparse_index(samples_hash)
-            sparse_sim_scores = read_trec_run(samples_hash, len(queries), len(corpus))
+    if args.add_sparse_index:
+        _, query_sparse_index = construct_dense_or_sparse_encodings_queries(queries, text_model, args.add_sparse_index)
+        store_sparse_index(samples_hash, query_sparse_index, encoding_query = True)
+        # text_emb_ls = text_retrieval_model.model.encode_queries(queries, convert_to_tensor=True)
+
+        run_search_with_sparse_index(samples_hash)
+        sparse_sim_scores = read_trec_run(samples_hash, len(queries), len(corpus))
     
     # retrieve_by_full_query(img_emb, text_emb_ls)
     
