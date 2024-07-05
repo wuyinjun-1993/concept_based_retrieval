@@ -226,10 +226,17 @@ if __name__ == "__main__":
             img_processor =  lambda images: raw_processor(images=images, return_tensors="pt")["pixel_values"]
             model = model.eval()
         elif args.model_name == "blip":
-            from lavis.models import load_model_and_preprocess
-            model, vis_processors, txt_processors = load_model_and_preprocess(name="blip_feature_extractor", model_type="base", is_eval=True, device=device)
-            text_processor = lambda text: txt_processors["eval"](text)
-            processor =  lambda images: torch.stack([vis_processors["eval"](image) for image in images])
+            print("start loading blip model")
+            if os.path.exists("output/blip.pkl"):
+                model,vis_processors_eval, txt_processors_eval = utils.load("output/blip.pkl")
+            else:
+                from lavis.models import load_model_and_preprocess
+                model, vis_processors, txt_processors = load_model_and_preprocess(name="blip_feature_extractor", model_type="base", is_eval=True, device=device)
+                utils.save((model,vis_processors["eval"], txt_processors["eval"]), "output/blip.pkl")
+                txt_processors_eval = txt_processors["eval"]
+                vis_processors_eval = vis_processors["eval"]
+            text_processor = lambda text: txt_processors_eval(text)
+            processor =  lambda images: torch.stack([vis_processors_eval(image) for image in images])
         
         model = model.eval()
         if args.add_sparse_index:
@@ -304,7 +311,7 @@ if __name__ == "__main__":
     elif args.dataset_name == "mscoco_40k":
         queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls= load_mscoco_datasets_from_cached_files(full_data_path, full_data_path)
         if  args.retrieval_method == "bm25" or args.add_sparse_index:
-            corpus = load_mscoco_text_datasets(full_data_path, img_idx_ls)
+            corpus = load_mscoco_text_datasets(full_data_path, query_path, img_idx_ls)
         # queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_sharegpt4v_datasets(full_data_path, full_data_path)
         # img_idx_ls, img_file_name_ls = load_other_sharegpt4v_mscoco_images(full_data_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
     

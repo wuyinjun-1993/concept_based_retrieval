@@ -384,11 +384,11 @@ def load_mscoco_text_datasets(data_path, query_path, img_idx_ls):
     # with open(img_caption_file_name, 'rb') as f:
     # caption_pd = pickle.load(f)
     
-    caption_pd = utils.load(os.path.join(query_path, "mscoco_40kdecomposed_dependencies_wholeexp.pkl"))
+    caption_pd = utils.load(os.path.join(data_path, "mscoco_40kdecomposed_dependencies_wholeexp.pkl"))
         
     caption_text_ls = []
-    for img_id in img_idx_ls:
-        curr_text = list(caption_pd[caption_pd['image_id'] == img_id]["llava_caption_text"])[0]
+    for img_id in tqdm(img_idx_ls, desc="Loading captions"):
+        curr_text = list(caption_pd[caption_pd['id'] == img_id]["caption_sharegpt4v"])[0]
         caption_text_ls.append(curr_text)
         
     return caption_text_ls

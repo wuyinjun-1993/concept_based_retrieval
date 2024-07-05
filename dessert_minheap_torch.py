@@ -562,12 +562,12 @@ class DocRetrieval:
         # self._centroids = np.transpose(centroids)
         # self._centroids = torch.t(centroids)
         self._centroids = centroids.T.to(self._device)
-        self.doc_embs_ls = []
+        # self.doc_embs_ls = []
         
 
     # @profile
     def add_doc(self, doc_embeddings: torch.tensor, doc_id: str, index_method="default") -> bool:
-        self.doc_embs_ls.append(doc_embeddings)
+        # self.doc_embs_ls.append(doc_embeddings)
         centroid_ids = self.getNearestCentroids(doc_embeddings, 1)
         return self.add_doc_with_centroids(doc_embeddings, doc_id, centroid_ids, index_method=index_method)
     # @profile
