@@ -50,15 +50,20 @@ def embed_queries(filename_ls, filename_cap_mappings, processor, model, device):
             text_emb_ls.append(text_features.cpu())
     return text_emb_ls
 
-def embed_queries_with_input_queries(query_ls, processor, model, device):
+def embed_queries_with_input_queries(model_name, query_ls, processor, model, device):
     text_emb_ls = []
     with torch.no_grad():
         # for filename, caption in tqdm(filename_cap_mappings.items()):
         for caption in query_ls:
             # caption = filename_cap_mappings[file_name]
             inputs = processor(caption)
-            inputs = {key: val.to(device) for key, val in inputs.items()}
-            text_features = model.get_text_features(**inputs)
+            if model_name == "default":
+                inputs = {key: val.to(device) for key, val in inputs.items()}
+                text_features = model.get_text_features(**inputs)
+            elif model_name == "blip":
+                text_features = model.extract_features({"text_input":inputs}, mode="text").text_embeds_proj[:,0,:].view(1,-1)
+            else:
+                raise ValueError("Invalid model name")
             # text_features = outputs.last_hidden_state[:, 0, :]
             text_emb_ls.append(text_features.cpu())
     return text_emb_ls
@@ -240,7 +245,14 @@ if __name__ == "__main__":
         
         model = model.eval()
         if args.add_sparse_index:
-            text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b", prefix = sparse_prefix, suffix=sparse_suffix)
+            # text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b", prefix = sparse_prefix, suffix=sparse_suffix)
+            # if args.model_name == "default":
+            print("start loading distill-bert model")
+            if not os.path.exists("output/msmarco-distilbert-base-tas-b.pkl"):
+                text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b", prefix = sparse_prefix, suffix=sparse_suffix)
+                utils.save(text_model, "output/msmarco-distilbert-base-tas-b.pkl")
+            else:
+                text_model = utils.load("output/msmarco-distilbert-base-tas-b.pkl")
         
     else:
         # if args.dataset_name not in image_retrieval_datasets:
@@ -544,7 +556,7 @@ if __name__ == "__main__":
             # if args.dataset_name == "flickr":
             #     text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)
             # else:
-                text_emb_ls = embed_queries_with_input_queries(queries, text_processor, model, device)
+                text_emb_ls = embed_queries_with_input_queries(args.model_name, queries, text_processor, model, device)
     else:
         if not args.query_concept:
             # text_emb_ls = text_model.encode_queries(queries, convert_to_tensor=True)
