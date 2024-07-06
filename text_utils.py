@@ -130,7 +130,7 @@ def construct_dense_or_sparse_encodings_queries(queries, text_model,add_sparse_i
 
 
 def construct_dense_or_sparse_encodings(args, corpus, text_model, samples_hash, is_sparse=False):
-    if args.model_name == "default":
+    if args.model_name == "default" or args.is_img_retrieval:
         corpus_embedding_file_name = f"output/saved_corpus_embeddings_{samples_hash}"
     elif args.model_name == "llm":
         corpus_embedding_file_name = f"output/saved_corpus_embeddings_llm_{samples_hash}"
@@ -326,11 +326,11 @@ def reformat_patch_embeddings_txt(patch_emb_ls, img_emb):
     return patch_emb_curr_img_ls
 
 
-def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, query_key_ls=None):
+def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, query_key_ls=None, cached_file_suffix=""):
     if query_hash is not None:
         sub_query_file_name = os.path.join(data_path, f"sub_queries_{query_hash}.json")
     else:
-        sub_query_file_name = os.path.join(data_path, "sub_queries.json")
+        sub_query_file_name = os.path.join(data_path, "sub_queries"+cached_file_suffix + ".json")
     if query_key_ls is None:
         idx_to_rid = {str(i+1): str(i+1) for i in range(len(queries))}
         query_key_ls = [str(i+1) for i in range(len(queries))]

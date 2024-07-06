@@ -194,7 +194,7 @@ def group_dependent_segments_seq(sentence, segments):
     elapsed_time = end_time - start_time  # Calculate elapsed time
     return " | ".join(grouped_indices), elapsed_time
 
-def group_dependent_segments_seq_all(sentence_mappings, segments_mappings, data_path, query_key_idx_ls=None, query_key_ls=None, query_hash=None):
+def group_dependent_segments_seq_all(sentence_mappings, segments_mappings, data_path, query_key_idx_ls=None, query_key_ls=None, query_hash=None, cached_file_suffix=""):
     if query_key_ls is None:
         sentence_ls = [sentence_mappings[str(idx + 1)] for idx in range(len(sentence_mappings))]
         segments_str_ls = ["|".join(segments_mappings[str(idx + 1)][0]) for idx in range(len(segments_mappings))]
@@ -205,8 +205,8 @@ def group_dependent_segments_seq_all(sentence_mappings, segments_mappings, data_
         segments_ls = [segments_mappings[str(idx + 1)] for idx in range(len(segments_mappings))]
     
     if query_hash is None:
-        grouped_sub_q_ids_file = os.path.join(data_path, "grouped_sub_q_ids_ls.pkl")
-        grouped_sub_q_ids_json_file = os.path.join(data_path, "grouped_sub_q_ids_ls.json")
+        grouped_sub_q_ids_file = os.path.join(data_path, "grouped_sub_q_ids_ls" +cached_file_suffix + ".pkl")
+        grouped_sub_q_ids_json_file = os.path.join(data_path, "grouped_sub_q_ids_ls"+cached_file_suffix + ".json")
     else:
         grouped_sub_q_ids_file = os.path.join(data_path, f"grouped_sub_q_ids_ls_{query_hash}.pkl")
         grouped_sub_q_ids_json_file = os.path.join(data_path, f"grouped_sub_q_ids_ls_{query_hash}.json")

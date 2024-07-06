@@ -165,6 +165,7 @@ def parse_args():
     parser.add_argument('--clustering_number', type=float, default=0.1, help='config file')
     # 
     parser.add_argument('--nprobe_query', type=int, default=2, help='config file')
+    parser.add_argument('--cached_file_suffix', type=str, default="", help='config file')
     
     args = parser.parse_args()
     return args
@@ -356,7 +357,7 @@ if __name__ == "__main__":
         query_key_ls = full_query_key_ls#list(queries.keys())
         # query_key_ls = random.sample(full_query_key_ls, 100)
         # query_key_ls = sorted(query_key_ls)
-        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls)
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix)
         print(sub_queries_ls)
         
         subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
@@ -375,7 +376,7 @@ if __name__ == "__main__":
         origin_corpus = None #copy.copy(corpus)
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
         query_key_idx_ls = [full_query_key_ls.index(key) for key in query_key_ls]
-        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_key_idx_ls, query_key_ls=query_key_ls) # [None for _ in range(len(queries))]
+        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_key_idx_ls, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix) # [None for _ in range(len(queries))]
         # args.algebra_method=three
         queries = [queries[key] for key in query_key_ls]
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "crepe/"))

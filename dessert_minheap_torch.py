@@ -419,7 +419,7 @@ class MaxFlashArray:
     def add_document(self, batch: torch.tensor, index_method="default") -> int:
         num_vectors = batch.shape[0]
         if index_method == "default":
-            self._maxflash_array.append(batch)
+            self._maxflash_array.append(None)
         else:
             num_elements = min(num_vectors, self._max_allowable_doc_size)
             hashes = self.hash(batch)
