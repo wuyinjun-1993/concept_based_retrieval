@@ -320,6 +320,9 @@ if __name__ == "__main__":
         # queries, img_file_name_ls, sub_queries_ls, img_idx_ls = load_sharegpt4v_datasets(full_data_path, full_data_path)
         queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls=load_mscoco_120k_datasets_from_cached_files(full_data_path, full_data_path)
         img_idx_ls, img_file_name_ls = load_other_sharegpt4v_mscoco_images(full_data_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
+        
+        if  args.retrieval_method == "bm25" or args.add_sparse_index:
+            corpus = load_mscoco_text_datasets(full_data_path, query_path, img_idx_ls, data_file_name="sharegpt4v_random_1000_queries.pkl", cached_caption_file_name="mscoco_blip_captioning.pkl")
     
     elif args.dataset_name == "mscoco_40k":
         queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls= load_mscoco_datasets_from_cached_files(full_data_path, full_data_path)

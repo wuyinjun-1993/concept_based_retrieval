@@ -25,6 +25,7 @@ from LLM4split.prompt_utils import obtain_response_from_openai, prompt_check_cor
 import math
 import networkx as nx
 from beir.retrieval import models
+from transformers import BlipProcessor, BlipForConditionalGeneration
 
 
 
@@ -32,61 +33,61 @@ import requests
 from PIL import Image
 from io import BytesIO
 from transformers import AutoTokenizer, BitsAndBytesConfig
-from llava.model import LlavaLlamaForCausalLM
-import torch
-from llava.conversation import conv_templates, SeparatorStyle
-from llava.utils import disable_torch_init
-from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
-from llava.mm_utils import tokenizer_image_token, get_model_name_from_path, KeywordsStoppingCriteria
-from transformers import TextStreamer
+# from llava.model import LlavaLlamaForCausalLM
+# import torch
+# from llava.conversation import conv_templates, SeparatorStyle
+# from llava.utils import disable_torch_init
+# from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
+# from llava.mm_utils import tokenizer_image_token, get_model_name_from_path, KeywordsStoppingCriteria
+# from transformers import TextStreamer
 
-def init_llava_model():
-    model_path = "liuhaotian/llava-v1.6-mistral-7b"
-    kwargs = {"device_map": "auto"}
-    kwargs['load_in_4bit'] = True
-    kwargs['quantization_config'] = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.float16,
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type='nf4'
-    )
-    model = LlavaLlamaForCausalLM.from_pretrained(model_path, low_cpu_mem_usage=True, **kwargs)
-    tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
+# def init_llava_model():
+#     model_path = "liuhaotian/llava-v1.6-mistral-7b"
+#     kwargs = {"device_map": "auto"}
+#     kwargs['load_in_4bit'] = True
+#     kwargs['quantization_config'] = BitsAndBytesConfig(
+#         load_in_4bit=True,
+#         bnb_4bit_compute_dtype=torch.float16,
+#         bnb_4bit_use_double_quant=True,
+#         bnb_4bit_quant_type='nf4'
+#     )
+#     model = LlavaLlamaForCausalLM.from_pretrained(model_path, low_cpu_mem_usage=True, **kwargs)
+#     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
 
-    vision_tower = model.get_vision_tower()
-    if not vision_tower.is_loaded:
-        vision_tower.load_model()
-    vision_tower.to(device='cuda')
-    image_processor = vision_tower.image_processor
-    return image_processor, tokenizer, model
+#     vision_tower = model.get_vision_tower()
+#     if not vision_tower.is_loaded:
+#         vision_tower.load_model()
+#     vision_tower.to(device='cuda')
+#     image_processor = vision_tower.image_processor
+#     return image_processor, tokenizer, model
 
-def caption_image_llama(image_file, prompt, image_processor, tokenizer, model):
-    if image_file.startswith('http') or image_file.startswith('https'):
-        response = requests.get(image_file)
-        image = Image.open(BytesIO(response.content)).convert('RGB')
-    else:
-        image = Image.open(image_file).convert('RGB')
-    disable_torch_init()
-    conv_mode = "llava_v0"
-    conv = conv_templates[conv_mode].copy()
-    roles = conv.roles
-    image_tensor = image_processor.preprocess(image, return_tensors='pt')['pixel_values'].half().cuda()
-    inp = f"{roles[0]}: {prompt}"
-    inp = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + inp
-    conv.append_message(conv.roles[0], inp)
-    conv.append_message(conv.roles[1], None)
-    raw_prompt = conv.get_prompt()
-    input_ids = tokenizer_image_token(raw_prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
-    stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
-    keywords = [stop_str]
-    stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
-    with torch.inference_mode():
-      output_ids = model.generate(input_ids, images=image_tensor, do_sample=True, temperature=0.2,
-                                  max_new_tokens=1024, use_cache=True, stopping_criteria=[stopping_criteria])
-    outputs = tokenizer.decode(output_ids[0, input_ids.shape[1]:]).strip()
-    conv.messages[-1][-1] = outputs
-    output = outputs.rsplit('</s>', 1)[0]
-    return image, output
+# def caption_image_llama(image_file, prompt, image_processor, tokenizer, model):
+#     if image_file.startswith('http') or image_file.startswith('https'):
+#         response = requests.get(image_file)
+#         image = Image.open(BytesIO(response.content)).convert('RGB')
+#     else:
+#         image = Image.open(image_file).convert('RGB')
+#     disable_torch_init()
+#     conv_mode = "llava_v0"
+#     conv = conv_templates[conv_mode].copy()
+#     roles = conv.roles
+#     image_tensor = image_processor.preprocess(image, return_tensors='pt')['pixel_values'].half().cuda()
+#     inp = f"{roles[0]}: {prompt}"
+#     inp = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + inp
+#     conv.append_message(conv.roles[0], inp)
+#     conv.append_message(conv.roles[1], None)
+#     raw_prompt = conv.get_prompt()
+#     input_ids = tokenizer_image_token(raw_prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
+#     stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
+#     keywords = [stop_str]
+#     stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
+#     with torch.inference_mode():
+#       output_ids = model.generate(input_ids, images=image_tensor, do_sample=True, temperature=0.2,
+#                                   max_new_tokens=1024, use_cache=True, stopping_criteria=[stopping_criteria])
+#     outputs = tokenizer.decode(output_ids[0, input_ids.shape[1]:]).strip()
+#     conv.messages[-1][-1] = outputs
+#     output = outputs.rsplit('</s>', 1)[0]
+#     return image, output
 
 @dataclass
 class Patch:
@@ -440,19 +441,51 @@ def load_sharegpt4v_datasets(data_path, query_path):
     return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls
 
 
-def load_mscoco_text_datasets(data_path, query_path, img_idx_ls):
+def init_blip_captioning_model():
+    processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
+    model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-large", torch_dtype=torch.float16).to("cuda")
+    return model, processor
+
+def load_mscoco_text_datasets(data_path, query_path, img_idx_ls, cached_caption_file_name="mscoco40k_blip_captioning.pkl", data_file_name="mscoco_40kdecomposed_dependencies_wholeexp.pkl"):
     # img_caption_file_name = query_path
     # with open(img_caption_file_name, 'rb') as f:
     # caption_pd = pickle.load(f)
     
-    caption_pd = utils.load(os.path.join(data_path, "mscoco_40kdecomposed_dependencies_wholeexp.pkl"))
+    cached_blip_caption_file_name = os.path.join(query_path, cached_caption_file_name)
+    
+    if os.path.exists(cached_blip_caption_file_name):
+        img_idx_caption_text_mappings = utils.load(cached_blip_caption_file_name)
+        caption_text_ls=[]
+        for img_id in tqdm(img_idx_ls, desc="Loading captions"):
         
-    caption_text_ls = []
-    for img_id in tqdm(img_idx_ls, desc="Loading captions"):
-        curr_text = list(caption_pd[caption_pd['id'] == img_id]["caption_sharegpt4v"])[0]
-        caption_text_ls.append(curr_text)
+            caption_text_ls.append(img_idx_caption_text_mappings[img_id])
+        return caption_text_ls
+    else:
+        caption_pd = utils.load(os.path.join(data_path, data_file_name))
+            
+        caption_text_ls = []
+        img_idx_caption_text_mappings = dict()
+        model, processor = init_blip_captioning_model()
+        for img_id in tqdm(img_idx_ls, desc="Loading captions"):
+            
+            img_file_name = os.path.join(data_path, "images/train2017/", caption_pd[caption_pd['id'] == img_id]["image"].values[0])
+            raw_image = Image.open(img_file_name).convert('RGB')
+
+            # conditional image captioning
+            text = "a photography of"
+            inputs = processor(raw_image, text, return_tensors="pt").to("cuda", torch.float16)
+
+            out = model.generate(**inputs)
+            curr_text = processor.decode(out[0], skip_special_tokens=True)
+            
+            # curr_text = list(caption_pd[caption_pd['id'] == img_id]["caption_sharegpt4v"])[0]
+            caption_text_ls.append(curr_text)
+            img_idx_caption_text_mappings[img_id] = curr_text
+            
+            
+        utils.save(img_idx_caption_text_mappings, cached_blip_caption_file_name) 
         
-    return caption_text_ls
+        return caption_text_ls
 
 def load_mscoco_datasets_from_cached_files(data_path, query_path):
     # img_caption_file_name = query_path
