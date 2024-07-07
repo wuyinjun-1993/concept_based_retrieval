@@ -31,7 +31,7 @@ from dessert_minheap_torch import *
 
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco", "mscoco_40k"]
-text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco", "webis-touche2020", "scidocs"]
+text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco", "webis-touche2020", "scifact"]
 
 
 
@@ -383,7 +383,7 @@ if __name__ == "__main__":
         # args.algebra_method=three
         queries = [queries[key] for key in query_key_ls]
     
-    elif args.dataset_name == "scidocs":
+    elif args.dataset_name == "scifact":
         url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(args.dataset_name)
         data_path = util.download_and_unzip(url, full_data_path)
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
