@@ -31,7 +31,7 @@ from dessert_minheap_torch import *
 
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco", "mscoco_40k"]
-text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco"]
+text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco", "webis-touche2020", "scidocs"]
 
 
 
@@ -379,6 +379,41 @@ if __name__ == "__main__":
         origin_corpus = None #copy.copy(corpus)
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
         query_key_idx_ls = [full_query_key_ls.index(key) for key in query_key_ls]
+        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_key_idx_ls, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix) # [None for _ in range(len(queries))]
+        # args.algebra_method=three
+        queries = [queries[key] for key in query_key_ls]
+    
+    elif args.dataset_name == "scidocs":
+        url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(args.dataset_name)
+        data_path = util.download_and_unzip(url, full_data_path)
+        corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
+        full_query_key_ls = [str(idx + 1) for idx in range(len(queries))]
+        try:
+            queries= read_queries_from_file(os.path.join(full_data_path, "queries.jsonl")) #, subset_img_id=args.subset_img_id)
+        except:
+            pass
+        query_key_ls = list(queries.keys())
+        # query_key_ls = random.sample(full_query_key_ls, 100)
+        # query_key_ls = sorted(query_key_ls)
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix)
+        print(sub_queries_ls)
+        
+        subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
+        if False: #os.path.exists(subset_file_name):
+            corpus, qrels = utils.load(subset_file_name)
+        else:        
+            corpus, qrels = subset_corpus(corpus, qrels, args.total_count)
+            utils.save((corpus, qrels), subset_file_name)
+        
+        qrels = {key: qrels[idx_to_rid[key]] for key in sub_queries_ls if not check_empty_mappings(qrels[idx_to_rid[key]])}
+        
+        if len(qrels) == 0:
+            print("no valid queries, exit!")
+            exit(1)
+        
+        origin_corpus = None #copy.copy(corpus)
+        corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
+        query_key_idx_ls = list(range(len(full_query_key_ls))) #[query_key_ls.index(key) for key in full_query_key_ls]
         grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_key_idx_ls, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix) # [None for _ in range(len(queries))]
         # args.algebra_method=three
         queries = [queries[key] for key in query_key_ls]

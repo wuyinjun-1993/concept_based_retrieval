@@ -571,7 +571,7 @@ def load_mscoco_120k_datasets_from_cached_files(data_path, query_path):
             img_idx_ls.append(image_idx)
             caption_ls.append(caption)
             sub_caption_ls.append(sub_captions)
-            all_grouped_sub_q_ids_ls.append(grouped_sub_q_ids_ls)
+            all_grouped_sub_q_ids_ls.append(None)#(grouped_sub_q_ids_ls)
         except:
             pass
     return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls

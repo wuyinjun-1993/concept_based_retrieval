@@ -355,6 +355,7 @@ def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, quer
         for qid in query_key_ls:
             query = queries[qid]
             sub_caption_str=obtain_response_from_openai(dataset_name = "trec-covid", query=query)
+            # sub_caption_str=obtain_response_from_openai(dataset_name = "no", query=query)
             sub_captions = decompose_single_query_ls(sub_caption_str)
             sub_queries[rid_to_idx[qid]] = sub_captions
 
