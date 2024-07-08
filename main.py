@@ -31,7 +31,7 @@ from dessert_minheap_torch import *
 
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco", "mscoco_40k"]
-text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco", "webis-touche2020", "scifact"]
+text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco", "webis-touche2020", "scifact", "fiqa"]
 
 
 
@@ -383,7 +383,7 @@ if __name__ == "__main__":
         # args.algebra_method=three
         queries = [queries[key] for key in query_key_ls]
     
-    elif args.dataset_name == "scifact":
+    elif args.dataset_name == "scifact" or args.dataset_name == "fiqa":
         url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(args.dataset_name)
         data_path = util.download_and_unzip(url, full_data_path)
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
@@ -392,11 +392,16 @@ if __name__ == "__main__":
             queries= read_queries_from_file(os.path.join(full_data_path, "queries.jsonl")) #, subset_img_id=args.subset_img_id)
         except:
             pass
-        query_key_ls = list(queries.keys())
+        query_key_ls = list(queries.keys())#[5:6]
+        queries = {key:queries[key] for key in query_key_ls}
         # query_key_ls = random.sample(full_query_key_ls, 100)
         # query_key_ls = sorted(query_key_ls)
-        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix)
+        query_hash = None
+        # query_hash = "full"
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash, dataset_name="fiqa")
+        # sub_queries_ls = {"1":[['1 EIN", "multiple business names']]}
         print(sub_queries_ls)
+        
         
         subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
         if False: #os.path.exists(subset_file_name):
@@ -413,8 +418,46 @@ if __name__ == "__main__":
         
         origin_corpus = None #copy.copy(corpus)
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
-        query_key_idx_ls = list(range(len(full_query_key_ls))) #[query_key_ls.index(key) for key in full_query_key_ls]
-        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_key_idx_ls, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix) # [None for _ in range(len(queries))]
+        query_key_idx_ls = list(range(len(queries))) #[query_key_ls.index(key) for key in full_query_key_ls]
+        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_key_idx_ls, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash) # [None for _ in range(len(queries))]
+        # args.algebra_method=three
+        queries = [queries[key] for key in query_key_ls]
+    elif args.dataset_name == "webis-touche2020":
+        url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(args.dataset_name)
+        data_path = util.download_and_unzip(url, full_data_path)
+        corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
+        full_query_key_ls = [str(idx + 1) for idx in range(len(queries))]
+        try:
+            queries= read_queries_from_file(os.path.join(full_data_path, "queries.jsonl")) #, subset_img_id=args.subset_img_id)
+        except:
+            pass
+        query_key_ls = list(queries.keys())
+        queries = {key:queries[key] for key in query_key_ls}
+        # query_key_ls = random.sample(full_query_key_ls, 100)
+        # query_key_ls = sorted(query_key_ls)
+        query_hash = "full"
+        # query_hash = "full"
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash, dataset_name="fiqa")
+        print(sub_queries_ls)
+        # sub_queries_ls = {}
+        
+        subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
+        if False: #os.path.exists(subset_file_name):
+            corpus, qrels = utils.load(subset_file_name)
+        else:        
+            corpus, qrels = subset_corpus(corpus, qrels, args.total_count)
+            utils.save((corpus, qrels), subset_file_name)
+        
+        qrels = {key: qrels[idx_to_rid[key]] for key in sub_queries_ls if not check_empty_mappings(qrels[idx_to_rid[key]])}
+        
+        if len(qrels) == 0:
+            print("no valid queries, exit!")
+            exit(1)
+        
+        origin_corpus = None #copy.copy(corpus)
+        corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
+        query_key_idx_ls = list(range(len(queries))) #[query_key_ls.index(key) for key in full_query_key_ls]
+        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_key_idx_ls, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash) # [None for _ in range(len(queries))]
         # args.algebra_method=three
         queries = [queries[key] for key in query_key_ls]
         # filename_ls, raw_img_ls, img_ls = read_images_from_folder(os.path.join(full_data_path, "crepe/"))
@@ -481,7 +524,10 @@ if __name__ == "__main__":
                 patch_count_ls = [1, 4, 8, 16, 32]
     else:
         # patch_count_ls = [8, 24, 32]
-        patch_count_ls = [1, 16, 8, 4, 32]
+        if not args.dataset_name == "fiqa":
+            patch_count_ls = [1, 16, 8, 4, 32]
+        else:
+            patch_count_ls = [4, 32, 128, 256]
         # patch_count_ls = [1]
         # patch_count_ls = [32]
     
@@ -547,6 +593,30 @@ if __name__ == "__main__":
                 utils.save(retrieval_method, patch_clustering_info_cached_file)
             else:
                 retrieval_method = utils.load(patch_clustering_info_cached_file)
+                
+        else:
+            patch_clustering_info_cached_file = get_dessert_clustering_res_file_name(samples_hash, [-1], clustering_number=args.clustering_number, index_method=args.index_method, typical_doclen=args.clustering_doc_count_factor)
+            patch_emb_by_img_ls = [img_emb[idx].view(1,-1) for idx in range(len(img_emb))]
+            if not os.path.exists(patch_clustering_info_cached_file):
+            
+                centroid_file_name = get_clustering_res_file_name(args, samples_hash, [-1])
+                if os.path.exists(centroid_file_name):
+                    centroids = torch.load(centroid_file_name)
+                else:
+                    centroids =sampling_and_clustering(patch_emb_by_img_ls, dataset_name=args.dataset_name, clustering_number=args.clustering_number, typical_doclen=args.clustering_doc_count_factor)
+                    torch.save(centroids, centroid_file_name)
+                # centroids = torch.zeros([1, patch_emb_by_img_ls[-1].shape[-1]])
+                # hashes_per_table: int, num_tables
+                max_patch_count = max([len(patch_emb_by_img_ls[idx]) for idx in range(len(patch_emb_by_img_ls))])
+                retrieval_method = DocRetrieval(max_patch_count, args.hashes_per_table, args.num_tables, patch_emb_by_img_ls[-1].shape[-1], centroids, device=device)
+
+                for idx in tqdm(range(len(patch_emb_by_img_ls)), desc="add doc"):
+                    retrieval_method.add_doc(patch_emb_by_img_ls[idx], idx, index_method=args.index_method)
+                
+                # utils.save(retrieval_method, "output/retrieval_method.pkl")
+                utils.save(retrieval_method, patch_clustering_info_cached_file)
+            else:
+                retrieval_method = utils.load(patch_clustering_info_cached_file)
             # cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls
             # cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls, sample_patch_ids_to_cluster_id_mappings = clustering_img_patch_embeddings(patch_emb_by_img_ls, args.dataset_name + "_" + str(args.total_count), patch_emb_ls, closeness_threshold=args.closeness_threshold)
             
@@ -556,8 +626,8 @@ if __name__ == "__main__":
             #     cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls = utils.load(patch_clustering_info_cached_file)
             # else: 
             #     utils.save((cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls, sample_patch_ids_to_cluster_id_mappings), patch_clustering_info_cached_file)
-        else:
-            cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls = clustering_img_embeddings(img_emb)
+        # else:
+        #     cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls = clustering_img_embeddings(img_emb)
     
     if args.img_concept:
         bboxes_overlap_ls, clustering_nbs_mappings = init_bbox_nbs(args, patch_count_ls, samples_hash, bboxes_ls, patch_emb_by_img_ls, sample_patch_ids_to_cluster_id_mappings)
@@ -634,10 +704,14 @@ if __name__ == "__main__":
     if args.retrieval_method == "ours":
         if not args.img_concept:
             if not args.search_by_cluster:
-                results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
+                if args.query_concept:
+                    patch_emb_by_img_ls = [img_emb[idx].view(1,-1) for idx in range(len(img_emb))]
+                    results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
+                else:
+                    results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
             else:
                 # results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
-                results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method)
+                results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method)
         else:
             
             if not args.search_by_cluster:

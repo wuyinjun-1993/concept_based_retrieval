@@ -10,7 +10,7 @@ from sparse_index import construct_sparse_index, store_sparse_index
 from LLM4split.prompt_utils import obtain_response_from_openai
 sparse_prefix='<s><|system|>\\nYou are an AI assistant that can understand human language.<|end|>\\n<|user|>\\nQuery: "'
 sparse_suffix='". Use one most important word to represent the query in retrieval task. Make sure your word is in lowercase.<|end|>\\n<|assistant|>\\nThe word is: "'
-
+import time
 
 class ConceptLearner_text:
     # def __init__(self, samples: list[PIL.Image], input_to_latent, input_processor, device: str = 'cpu'):
@@ -45,7 +45,7 @@ class ConceptLearner_text:
         # corpus_content_split = re.split(r"[.|\?|\!]", corpus_content)
         # corpus_content_split = [x.strip() for x in corpus_content_split if len(x) > 0]
         corpus_content_split = self.split_corpus_ls[corpus_idx] # [corpus["title"]] + corpus_content_split
-        
+        corpus_content_split = [x.strip() for x in corpus_content_split if len(x) > 0]
         bbox_ls = []
         
         for idx in range(len(corpus_content_split)):
@@ -326,7 +326,7 @@ def reformat_patch_embeddings_txt(patch_emb_ls, img_emb):
     return patch_emb_curr_img_ls
 
 
-def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, query_key_ls=None, cached_file_suffix=""):
+def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, query_key_ls=None, cached_file_suffix="", dataset_name = "trec-covid"):
     if query_hash is not None:
         sub_query_file_name = os.path.join(data_path, f"sub_queries_{query_hash}.json")
     else:
@@ -354,10 +354,11 @@ def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, quer
         
         for qid in query_key_ls:
             query = queries[qid]
-            sub_caption_str=obtain_response_from_openai(dataset_name = "trec-covid", query=query)
-            # sub_caption_str=obtain_response_from_openai(dataset_name = "no", query=query)
+            # sub_caption_str=obtain_response_from_openai(dataset_name = "trec-covid", query=query)
+            sub_caption_str=obtain_response_from_openai(dataset_name = dataset_name, query=query)
             sub_captions = decompose_single_query_ls(sub_caption_str)
             sub_queries[rid_to_idx[qid]] = sub_captions
+            time.sleep(2)
 
         utils.save(sub_queries, sub_query_file_name)
     

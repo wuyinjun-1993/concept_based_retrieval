@@ -428,10 +428,10 @@ class MaxFlashArray:
     
     def compute_score_full(self, curr_query_embedding, sub_corpus_embeddings, algebra_method="two", prob_agg="prod", device="cuda", corpus_idx=None, grouped_sub_q_ids_ls=None, sub_q_ls_idx=None, bboxes_overlap_ls=None, query_itr=None, is_img_retrieval=False,dependency_topk=50, **kwargs):
         if curr_query_embedding.shape[0] == 1:
-            if is_img_retrieval:
-                curr_scores_ls = cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
-            else:
-                curr_scores_ls = torch.max(cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
+            # if is_img_retrieval:
+            curr_scores_ls = cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
+            # else:
+            #     curr_scores_ls = torch.max(cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
             curr_scores = curr_scores_ls
             return curr_scores.item()
         # print("prob_agg::", prob_agg)

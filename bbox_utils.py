@@ -27,7 +27,7 @@ def is_bbox_overlapped_text(bbox1, bbox2):
     size1 = (x2_1 - x1_1)# * (y2_1 - y1_1)
     size2 = (x2_2 - x1_2)# * (y2_2 - y1_2)
     min_size = min(size1, size2)
-    return intersection_area > 0.5 * min_size
+    return intersection_area > 0.1 * min_size
 
 def add_clustering_nbs_info(clustering_nbs_mappings, sample_idx, cluster_idx1, cluster_idx2):
     if cluster_idx1 not in clustering_nbs_mappings:
