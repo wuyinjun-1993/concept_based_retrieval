@@ -497,8 +497,11 @@ class MaxFlashArray:
                     score = self._maxflash_array[flash_index].get_score(hashes, num_vectors_in_query, buffer, self._collision_count_to_sim, prob_agg=prob_agg, is_img_retrieval=is_img_retrieval)
                 else:
                     buffer = torch.zeros(self._max_allowable_doc_size, dtype=torch.int32, device=device)
-                    self._collision_count_to_sim = self._collision_count_to_sim.to(device)
-                    score = self._maxflash_array[flash_index].get_score_dependency(hashes, num_vectors_in_query, buffer, self._collision_count_to_sim, query_itr=query_idx, corpus_idx=flash_index, sub_q_ls_idx=query_sub_idx,device=device, is_img_retrieval=is_img_retrieval, prob_agg=prob_agg,grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,bboxes_overlap_ls=bboxes_overlap_ls, **kwargs)
+                    if query.shape[0] == 1:
+                        score = self._maxflash_array[flash_index].get_score(hashes, num_vectors_in_query, buffer, self._collision_count_to_sim, prob_agg=prob_agg, is_img_retrieval=is_img_retrieval)
+                    else:
+                        self._collision_count_to_sim = self._collision_count_to_sim.to(device)
+                        score = self._maxflash_array[flash_index].get_score_dependency(hashes, num_vectors_in_query, buffer, self._collision_count_to_sim, query_itr=query_idx, corpus_idx=flash_index, sub_q_ls_idx=query_sub_idx,device=device, is_img_retrieval=is_img_retrieval, prob_agg=prob_agg,grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,bboxes_overlap_ls=bboxes_overlap_ls, **kwargs)
 
             return score
 
