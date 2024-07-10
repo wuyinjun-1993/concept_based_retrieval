@@ -21,10 +21,12 @@ def get_final_res_file_name(args, patch_count_ls):
         file_prefix =  file_prefix + "_query"
     if args.img_concept:
         file_prefix =  file_prefix + "_img"
-        
+    
+    file_prefix += f"_method_{args.algebra_method}"
+    
     if args.search_by_cluster:
         file_prefix =  file_prefix + "_cluster"
-        
+    
     patch_clustering_info_cached_file = f"{file_prefix}.pkl"
         
     return patch_clustering_info_cached_file

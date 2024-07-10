@@ -269,12 +269,15 @@ def get_clustering_res_file_name(args, hashes, patch_count_ls):
     return centroid_ls_file_name
 
 
-def get_dessert_clustering_res_file_name(hashes, patch_count_ls,clustering_number=1000, index_method="default", typical_doclen=1):
+def get_dessert_clustering_res_file_name(hashes, patch_count_ls,clustering_number=1000, index_method="default", typical_doclen=1,num_tables=100, hashes_per_table=5):
     patch_count_str = get_patch_count_str(patch_count_ls)
-    if typical_doclen == 1:
-        patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_number}.pkl"
+    if index_method == "default":
+        if typical_doclen == 1:
+            patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_number}.pkl"
+        else:
+            patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_number}_doclen_{typical_doclen}.pkl"
     else:
-        patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_number}_doclen_{typical_doclen}.pkl"
+        patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_number}_doclen_{typical_doclen}_num_table_{num_tables}_hashes_per_table_{hashes_per_table}.pkl"
     return patch_clustering_info_cached_file
 
 # 0.12 for trec covid 10000

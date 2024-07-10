@@ -11,6 +11,7 @@ import torch
 import re
 from vector_dataset import Partitioned_vector_dataset, collate_fn
 import time
+import numpy as np
 # openai.api_key = os.getenv("OPENAI_API_KEY")
 import pandas as pd
 def obtain_key_words(query):
@@ -99,7 +100,88 @@ def retrieve_with_decomposition(retriever, corpus, queries, qrels, out_dir, data
     # return evaluate_for_query_batches(retriever, qrels, results), decomposed_queries
 
 
-def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, clustering_topk=500, batch_size=16,in_disk=False,doc_retrieval=None,use_clustering=False,prob_agg="prod",method="two",_nprobe_query=2, **kwargs):
+def retrieve_with_dessert(all_sub_corpus_embedding_ls, query_embeddings, doc_retrieval, prob_agg, method,dataset_name, **kwargs):
+    top_k=min(kwargs['clustering_topk'],len(all_sub_corpus_embedding_ls))
+    #print(top_k)
+    #print(type(top_k))
+    num_to_rerank=min(kwargs['clustering_topk'],len(all_sub_corpus_embedding_ls))
+    #print(num_to_rerank)
+    #print(type(num_to_rerank))
+    is_img_retrieval=kwargs['is_img_retrieval']
+    #print(is_img_retrieval)
+    #print(type(is_img_retrieval))
+    dependency_topk=kwargs['dependency_topk']
+    #print(dependency_topk)
+    #print(type(dependency_topk))
+    grouped_sub_q_ids_ls=kwargs['grouped_sub_q_ids_ls']
+    #print(grouped_sub_q_ids_ls)
+    #print(type(grouped_sub_q_ids_ls))
+    bboxes_overlap_ls=kwargs['bboxes_overlap_ls']
+    #print(bboxes_overlap_ls)
+    #print(type(bboxes_overlap_ls))
+    
+    all_cos_scores = []
+    query_ids = [str(idx+1) for idx in list(range(len(query_embeddings)))]
+    corpus_ids = [str(idx+1) for idx in list(range(len(all_sub_corpus_embedding_ls)))]
+    all_results = {qid: {} for qid in query_ids}
+    query_count = len(query_embeddings)
+    
+    all_cos_scores_tensor = torch.zeros(query_count, len(query_embeddings[0]), len(corpus_ids))
+    all_cos_scores_tensor[:] = 1e-6
+    expected_idx_ls = []
+    for idx in tqdm(range(query_count)): #, desc="Querying":
+        cos_scores_ls=[]
+        for sub_idx in range(len(query_embeddings[idx])):
+            #print('ENTERED')
+            #print(grouped_sub_q_ids_ls)
+            embeddings_numpy = (query_embeddings[idx][sub_idx]).detach().cpu().numpy().astype(np.float32)
+            #print(embeddings_numpy.shape)
+            #print(type(embeddings_numpy))
+            #results = doc_retrieval.query(embeddings_numpy, top_k, num_to_rerank, prob_agg, True)
+            if (method == "two"):
+                #5th input is use_frequency, just hard set to True
+                results = doc_retrieval.query(embeddings_numpy, top_k, num_to_rerank, prob_agg, True, is_img_retrieval)
+            else:
+                #5th input is use_frequency, just hard set to True
+                results = doc_retrieval.querywithdependency(embeddings_numpy, top_k, num_to_rerank, prob_agg, True, is_img_retrieval, dependency_topk, idx, sub_idx, grouped_sub_q_ids_ls, bboxes_overlap_ls)
+            
+            #time.sleep(5)
+            cos_scores_tensor = torch.tensor(results[0]).cpu()
+            sample_ids_tensor = torch.tensor(results[1]).cpu()
+
+            #print(f"Cos Scores Tensor: {cos_scores_tensor}, type: {type(cos_scores_tensor)}, shape: {cos_scores_tensor.shape}")
+            #print(f"Sample IDs Tensor: {sample_ids_tensor}, type: {type(sample_ids_tensor)}, shape: {sample_ids_tensor.shape}")
+
+            all_cos_scores_tensor[idx, sub_idx, sample_ids_tensor] = cos_scores_tensor
+            #print('done with all cos scores')
+
+    all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
+    if prob_agg == "prod":
+        all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+    else:
+        if dataset_name == "trec-covid":
+            all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+        else:
+            all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
+    print(all_cos_scores_tensor.shape)
+    #Get top-k values
+    cos_scores_top_k_values, cos_scores_top_k_idx = torch.topk(all_cos_scores_tensor, min(top_k+1, len(all_cos_scores_tensor[0])), dim=1, largest=True)
+    cos_scores_top_k_values = cos_scores_top_k_values.cpu().tolist()
+    cos_scores_top_k_idx = cos_scores_top_k_idx.cpu().tolist()
+    
+    for query_itr in range(query_count):
+        query_id = query_ids[query_itr]                  
+        for sub_corpus_id, score in zip(cos_scores_top_k_idx[query_itr], cos_scores_top_k_values[query_itr]):
+            corpus_id = corpus_ids[sub_corpus_id]
+            all_results[query_id][corpus_id] = score
+    results = all_results
+    
+    # print("It works!")
+    # print(results)
+    return results
+
+
+def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, clustering_topk=500, batch_size=16,in_disk=False,doc_retrieval=None,use_clustering=False,prob_agg="prod",method="two",_nprobe_query=2, index_method="default",dataset_name="", **kwargs):
     print("results with decomposition::")
     # if parallel:
     #     all_sub_corpus_embedding_dataset= Partitioned_vector_dataset(all_sub_corpus_embedding_ls)
@@ -112,12 +194,17 @@ def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddi
         # results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk)
         results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk, **kwargs)
     else:
-        doc_retrieval._nprobe_query = _nprobe_query #max(2, int(clustering_topk/20))
-        results = doc_retrieval.query_multi_queries(all_sub_corpus_embedding_ls, query_embeddings, top_k=min(clustering_topk,len(all_sub_corpus_embedding_ls)), num_to_rerank=min(clustering_topk,len(all_sub_corpus_embedding_ls)), prob_agg=prob_agg,method=method, **kwargs)
+        if index_method == "default":
+            doc_retrieval._nprobe_query = _nprobe_query #max(2, int(clustering_topk/20))
+            kwargs["dataset_name"] = dataset_name
+            results = doc_retrieval.query_multi_queries(all_sub_corpus_embedding_ls, query_embeddings, top_k=min(clustering_topk,len(all_sub_corpus_embedding_ls)), num_to_rerank=min(clustering_topk,len(all_sub_corpus_embedding_ls)), prob_agg=prob_agg,method=method, **kwargs)
+        else:
+            kwargs['clustering_topk'] = clustering_topk
+            results = retrieve_with_dessert(all_sub_corpus_embedding_ls, query_embeddings, doc_retrieval, prob_agg, method,dataset_name, **kwargs)
         # results = {str(idx+1): results[idx] for idx in range(len(results))}
     t2 = time.time()
     
-    print(f"Time taken: {t2-t1:.2f}s")
+    print(f"Time taken: {t2-t1:.2f}s")    
     ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values, ignore_identical_ids=False)
     return results
     # print("start evaluating performance for single query with decomposition")

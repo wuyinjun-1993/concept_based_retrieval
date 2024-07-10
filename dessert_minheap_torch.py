@@ -428,10 +428,10 @@ class MaxFlashArray:
     
     def compute_score_full(self, curr_query_embedding, sub_corpus_embeddings, algebra_method="two", prob_agg="prod", device="cuda", corpus_idx=None, grouped_sub_q_ids_ls=None, sub_q_ls_idx=None, bboxes_overlap_ls=None, query_itr=None, is_img_retrieval=False,dependency_topk=50, **kwargs):
         if curr_query_embedding.shape[0] == 1:
-            # if is_img_retrieval:
-            curr_scores_ls = cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
-            # else:
-            #     curr_scores_ls = torch.max(cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
+            if is_img_retrieval:
+                curr_scores_ls = cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
+            else:
+                curr_scores_ls = torch.max(cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
             curr_scores = curr_scores_ls
             return curr_scores.item()
         # print("prob_agg::", prob_agg)
@@ -605,7 +605,7 @@ class DocRetrieval:
         centroid_ids = self.getNearestCentroids(query_embeddings, self._nprobe_query)
         return self.query_with_centroids(document_embs_ls, query_embeddings, centroid_ids, top_k, num_to_rerank, prob_agg=prob_agg, **kwargs)
 
-    def query_multi_queries(self, document_embs_ls, query_embedding_ls, top_k: int, num_to_rerank: int, prob_agg="prod", **kwargs):
+    def query_multi_queries(self, document_embs_ls, query_embedding_ls, top_k: int, num_to_rerank: int, prob_agg="prod", dataset_name="", **kwargs):
         all_cos_scores = []
         query_ids = [str(idx+1) for idx in list(range(len(query_embedding_ls)))]
         corpus_ids = [str(idx+1) for idx in list(range(len(self._document_array._maxflash_array)))]
@@ -633,7 +633,10 @@ class DocRetrieval:
         if prob_agg == "prod":
             all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
         else:
-            all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
+            if dataset_name == "trec-covid":
+                all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+            else:
+                all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
         print(all_cos_scores_tensor.shape)
         #Get top-k values
         cos_scores_top_k_values, cos_scores_top_k_idx = torch.topk(all_cos_scores_tensor, min(top_k+1, len(all_cos_scores_tensor[0])), dim=1, largest=True)#, sorted=return_sorted)

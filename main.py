@@ -28,6 +28,8 @@ from baselines.bm25 import *
 from derive_sub_query_dependencies import group_dependent_segments_seq_all
 import random
 from dessert_minheap_torch import *
+import pynvml
+import dessert_py_dependency
 
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco", "mscoco_40k"]
@@ -165,7 +167,9 @@ def parse_args():
     parser.add_argument('--clustering_number', type=float, default=0.1, help='config file')
     # 
     parser.add_argument('--nprobe_query', type=int, default=2, help='config file')
+    parser.add_argument('--subset_patch_count', type=int, default=-1, help='config file')
     parser.add_argument('--cached_file_suffix', type=str, default="", help='config file')
+    parser.add_argument("--is_test", action="store_true", help="config file")
     
     args = parser.parse_args()
     return args
@@ -173,9 +177,43 @@ def parse_args():
 import psutil
 import os
 
-def print_memory_usage():
+def obtain_memory_usage():
     process = psutil.Process(os.getpid())
-    print(f"Memory usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
+    # print(f"Memory usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
+    memory_usage = process.memory_info().rss / 1024 ** 3
+    return memory_usage
+
+
+def obtain_gpu_memory_usage():
+    # pynvml.nvmlInit()
+    current_pid = os.getpid()
+    
+    used_gpu_memory = -1
+    pynvml.nvmlInit()
+    for dev_id in range(pynvml.nvmlDeviceGetCount()):
+        handle = pynvml.nvmlDeviceGetHandleByIndex(dev_id)
+        for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
+            if proc.pid == current_pid:
+                used_gpu_memory = proc.usedGpuMemory
+            
+    #         print(
+    #             "pid %d using %d bytes of memory on device %d."
+    #             % (proc.pid, proc.usedGpuMemory, dev_id)
+    #         )
+    
+    # handle = pynvml.nvmlDeviceGetHandleByIndex(3)
+
+    # # Get the list of processes using the GPU
+    # processes = pynvml.nvmlDeviceGetGraphicsRunningProcesses_v2(handle)
+    
+    # for process in processes:
+    #     if process.pid == current_pid:
+    #         used_memory = process.usedGpuMemory / (1024 ** 2)  # Convert bytes to MB
+
+    # process = psutil.Process(os.getpid())
+    # # print(f"Memory usage: {process.memory_info().rss / 1024 ** 2:.2f} MB")
+    # memory_usage = process.memory_info().rss / 1024 ** 2
+    return used_gpu_memory / 1024 ** 3
 
 
 def construct_qrels(dataset_name, queries, cached_img_idx, img_idx_ls, query_count):
@@ -211,7 +249,8 @@ if __name__ == "__main__":
                     datefmt='%Y-%m-%d %H:%M:%S',
                     level=logging.INFO,
                     handlers=[LoggingHandler()])
-
+    used_memory0 = psutil.virtual_memory().used
+    
     args = parse_args()
     print(args)
     args.is_img_retrieval = args.dataset_name in image_retrieval_datasets
@@ -339,6 +378,12 @@ if __name__ == "__main__":
         # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
         img_idx_ls, img_file_name_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
         # args.algebra_method=two
+        if args.is_test:
+            query_key = 5
+            queries = [queries[query_key]]
+            sub_queries_ls = {str(query_key): sub_queries_ls[str(query_key)]}
+            grouped_sub_q_ids_ls = {str(query_key): grouped_sub_q_ids_ls[str(query_key)]}
+        
         if  args.retrieval_method == "bm25" or args.add_sparse_index:
             corpus = load_crepe_text_datasets(full_data_path, query_path, img_idx_ls)
         
@@ -357,11 +402,21 @@ if __name__ == "__main__":
             queries= read_queries_from_file(os.path.join(full_data_path, "queries.jsonl")) #, subset_img_id=args.subset_img_id)
         except:
             pass
-        query_key_ls = full_query_key_ls#list(queries.keys())
+        # query_key_ls = full_query_key_ls#list(queries.keys())
+        if args.is_test:
+            query_key=str(2)
+            query_key_ls = [query_key]
+            queries = {key:queries[key] for key in query_key_ls}
+        else:
+            query_key_ls = full_query_key_ls
+        
         # query_key_ls = random.sample(full_query_key_ls, 100)
         # query_key_ls = sorted(query_key_ls)
         sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix)
         print(sub_queries_ls)
+        if args.is_test:
+            sub_queries_ls = {"1": sub_queries_ls[query_key]}
+            print(sub_queries_ls)
         
         subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
         if False: #os.path.exists(subset_file_name):
@@ -525,11 +580,14 @@ if __name__ == "__main__":
     else:
         # patch_count_ls = [8, 24, 32]
         if not args.dataset_name == "fiqa":
-            patch_count_ls = [1, 16, 8, 4, 32]
+            patch_count_ls = [1, 4, 8, 16, 32]
         else:
             patch_count_ls = [4, 32, 128, 256]
         # patch_count_ls = [1]
         # patch_count_ls = [32]
+    
+    if args.subset_patch_count > 0 and args.subset_patch_count < len(patch_count_ls):
+        patch_count_ls = patch_count_ls[:args.subset_patch_count]
     
     if args.is_img_retrieval:
         samples_hash = obtain_sample_hash(img_idx_ls, img_file_name_ls)
@@ -571,7 +629,7 @@ if __name__ == "__main__":
             # patch_clustering_info_cached_file = get_clustering_res_file_name(args, patch_count_ls)
             
             
-            patch_clustering_info_cached_file = get_dessert_clustering_res_file_name(samples_hash, patch_count_ls, clustering_number=args.clustering_number, index_method=args.index_method, typical_doclen=args.clustering_doc_count_factor)
+            patch_clustering_info_cached_file = get_dessert_clustering_res_file_name(samples_hash, patch_count_ls, clustering_number=args.clustering_number, index_method=args.index_method, typical_doclen=args.clustering_doc_count_factor, num_tables=args.num_tables, hashes_per_table=args.hashes_per_table)
             
             if not os.path.exists(patch_clustering_info_cached_file):
             
@@ -584,15 +642,27 @@ if __name__ == "__main__":
                 # centroids = torch.zeros([1, patch_emb_by_img_ls[-1].shape[-1]])
                 # hashes_per_table: int, num_tables
                 max_patch_count = max([len(patch_emb_by_img_ls[idx]) for idx in range(len(patch_emb_by_img_ls))])
-                retrieval_method = DocRetrieval(max_patch_count, args.hashes_per_table, args.num_tables, patch_emb_by_img_ls[-1].shape[-1], centroids, device=device)
+                if args.index_method == "default":
+                    retrieval_method = DocRetrieval(max_patch_count, args.hashes_per_table, args.num_tables, patch_emb_by_img_ls[-1].shape[-1], centroids, device=device)
+                else:
+                    retrieval_method = dessert_py_dependency.DocRetrieval(hashes_per_table = args.hashes_per_table, num_tables = args.num_tables, dense_input_dimension = patch_emb_by_img_ls[-1].shape[-1], nprobe_query=args.nprobe_query, centroids = centroids.detach().cpu().numpy().astype(np.float32));
 
                 for idx in tqdm(range(len(patch_emb_by_img_ls)), desc="add doc"):
-                    retrieval_method.add_doc(patch_emb_by_img_ls[idx], idx, index_method=args.index_method)
+                    if args.index_method == "default":
+                        retrieval_method.add_doc(patch_emb_by_img_ls[idx], idx, index_method=args.index_method)
+                    else:
+                        retrieval_method.add_doc(patch_emb_by_img_ls[idx].detach().cpu().numpy().astype(np.float32), str(idx))
                 
                 # utils.save(retrieval_method, "output/retrieval_method.pkl")
-                utils.save(retrieval_method, patch_clustering_info_cached_file)
+                if args.index_method == "default":
+                    utils.save(retrieval_method, patch_clustering_info_cached_file)
+                else:
+                    retrieval_method.serialize_to_file(patch_clustering_info_cached_file)
             else:
-                retrieval_method = utils.load(patch_clustering_info_cached_file)
+                if args.index_method == "default":
+                    retrieval_method = utils.load(patch_clustering_info_cached_file)
+                else:
+                    retrieval_method = dessert_py_dependency.DocRetrieval.deserialize_from_file(patch_clustering_info_cached_file)
                 
         else:
             patch_clustering_info_cached_file = get_dessert_clustering_res_file_name(samples_hash, [-1], clustering_number=args.clustering_number, index_method=args.index_method, typical_doclen=args.clustering_doc_count_factor)
@@ -691,7 +761,7 @@ if __name__ == "__main__":
     # retrieve_by_full_query(img_emb, text_emb_ls)
     
     # if args.is_img_retrieval:
-    retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=args.is_img_retrieval, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
+    retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=(args.is_img_retrieval or args.dataset_name == "webis-touche2020"), prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
     # else:
     #     retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=one)
     retriever = EvaluateRetrieval(retrieval_model, score_function="cos_sim") # or "cos_sim" for cosine similarity
@@ -706,20 +776,22 @@ if __name__ == "__main__":
             if not args.search_by_cluster:
                 if args.query_concept:
                     patch_emb_by_img_ls = [img_emb[idx].view(1,-1) for idx in range(len(img_emb))]
-                    results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
+                    results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name)
                 else:
-                    results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
+                    results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name)
             else:
                 # results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
-                results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method)
+                results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, dataset_name=args.dataset_name)
         else:
-            
+            if args.dataset_name == "webis-touche2020":
+                args.is_img_retrieval = True
+                
             if not args.search_by_cluster:
-                results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
+                results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name, is_img_retrieval=args.is_img_retrieval)
             else:
                 # results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
                 # grouped_sub_q_ids_ls, bboxes_overlap_ls, dependency_topk, device, prob_agg, is_img_retrieval
-                results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, clustering_topk=args.clustering_topk, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk, device=device, is_img_retrieval=args.is_img_retrieval, method=args.algebra_method, index_method=args.index_method, _nprobe_query=args.nprobe_query)
+                results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, clustering_topk=args.clustering_topk, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk, device=device, is_img_retrieval=args.is_img_retrieval, method=args.algebra_method, index_method=args.index_method, _nprobe_query=args.nprobe_query, dataset_name=args.dataset_name)
     # elif args.retrieval_method == "llm_ranker":
     #     ranker = LLM_ranker(corpus)
     #     results = ranker.retrieval(queries)
@@ -734,9 +806,20 @@ if __name__ == "__main__":
     else:
         raise ValueError("Invalid retrieval method")
     
+        
+    # used_memory = psutil.virtual_memory().used
+    used_memory = obtain_memory_usage()
+    used_gpu_memory = obtain_gpu_memory_usage()
+    
+    # print("used memory 0::", used_memory0)
+    # print("used memory::", used_memory)
+    print("used CPU memory::", used_memory)
+    print("used GPU memory::", used_gpu_memory)
+    # used_gpu_memory = gpu.memoryUsed
+    
     final_res_file_name = utils.get_final_res_file_name(args, patch_count_ls)
     print("The results are stored at ", final_res_file_name)
-    # utils.save(results, final_res_file_name)
+    utils.save(results, final_res_file_name)
     
     # else:
     #     retrieve_by_embeddings(retriever, text_emb_ls, img_emb, qrels)
