@@ -170,6 +170,7 @@ def parse_args():
     parser.add_argument('--subset_patch_count', type=int, default=-1, help='config file')
     parser.add_argument('--cached_file_suffix', type=str, default="", help='config file')
     parser.add_argument("--is_test", action="store_true", help="config file")
+    parser.add_argument("--store_res", action="store_true", help="config file")
     
     args = parser.parse_args()
     return args
@@ -377,12 +378,8 @@ if __name__ == "__main__":
         queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls = load_crepe_datasets(full_data_path, query_path, subset_img_id=args.subset_img_id)
         # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
         img_idx_ls, img_file_name_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
+        # grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, None, query_key_ls=None) # [None for _ in range(len(queries))]
         # args.algebra_method=two
-        if args.is_test:
-            query_key = 5
-            queries = [queries[query_key]]
-            sub_queries_ls = {str(query_key): sub_queries_ls[str(query_key)]}
-            grouped_sub_q_ids_ls = {str(query_key): grouped_sub_q_ids_ls[str(query_key)]}
         
         if  args.retrieval_method == "bm25" or args.add_sparse_index:
             corpus = load_crepe_text_datasets(full_data_path, query_path, img_idx_ls)
@@ -713,6 +710,13 @@ if __name__ == "__main__":
             if args.query_count > 0:
                 sub_queries_ls = [sub_queries_ls[idx] for idx in subset_q_idx]
                 grouped_sub_q_ids_ls = [grouped_sub_q_ids_ls[idx] for idx in subset_q_idx]
+                
+            # if args.is_test:
+            #     query_key = 41
+            #     query_idx_key = query_key - 1
+            #     queries = [queries[query_key]]
+            #     sub_queries_ls = [sub_queries_ls[query_idx_key]]
+            #     grouped_sub_q_ids_ls = [grouped_sub_q_ids_ls[query_idx_key]]
             # print("sub_q_index::", subset_q_idx)
             # print("qrels::", qrels)
     
@@ -818,8 +822,9 @@ if __name__ == "__main__":
     # used_gpu_memory = gpu.memoryUsed
     
     final_res_file_name = utils.get_final_res_file_name(args, patch_count_ls)
-    print("The results are stored at ", final_res_file_name)
-    utils.save(results, final_res_file_name)
+    if args.store_res:
+        print("The results are stored at ", final_res_file_name)
+        utils.save(results, final_res_file_name)
     
     # else:
     #     retrieve_by_embeddings(retriever, text_emb_ls, img_emb, qrels)

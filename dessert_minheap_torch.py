@@ -279,7 +279,7 @@ class MaxFlash:
 
         for vec_id in range(num_elements):
             if is_img_retrieval and num_elements == 1:
-                sub_patch_ids = np.array([-1])
+                sub_patch_ids = np.array([self._hashtable._num_elements-1])
             else:
                 sub_patch_ids = None
             max_count = self.compute_score_single_query(query_hashes, vec_id, count_buffer, sub_patch_ids=sub_patch_ids)

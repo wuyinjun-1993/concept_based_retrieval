@@ -615,7 +615,7 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=F
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output3.csv")
     img_caption_file_name = os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output_with_dependency3.csv")
 
-    with open("prod_hard_negatives/selected_img_id_ls", "rb") as f:
+    with open(os.path.join(query_path, "prod_hard_negatives/selected_img_id_ls"), "rb") as f:
         selected_img_id_ls = pickle.load(f)
     # selected_img_id_ls.append(0)
     img_folder = os.path.join(data_path, "VG_100K/")
@@ -690,7 +690,7 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=F
         
         query_paritions_str = caption_pd.iloc[idx]['groups']
         grouped_sub_q_ids_ls = decompose_single_query_parition_groups(sub_captions, query_paritions_str)
-        print(sub_captions)
+        # print(sub_captions)
         # img_ls.append(img)
         img_idx_ls.append(image_idx)
         caption_ls.append(caption)
@@ -704,7 +704,7 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=F
     if subset_img_id is None:
         return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
     else:
-        print(sub_caption_ls[subset_img_id])
+        # print(sub_caption_ls[subset_img_id])
         return [caption_ls[subset_img_id]], [img_file_name_ls[subset_img_id]], [sub_caption_ls[subset_img_id]], [img_idx_ls[subset_img_id]], [all_grouped_sub_q_ids_ls[subset_img_id]]
 
 
@@ -789,7 +789,7 @@ def load_other_crepe_images(data_path, query_path, img_idx_ls, img_file_name_ls,
     img_folder = os.path.join(data_path, "VG_100K/")
     img_folder2 = os.path.join(data_path, "VG_100K_2/")
 
-    with open("prod_hard_negatives/selected_img_id_ls", "rb") as f:
+    with open(os.path.join(query_path, "prod_hard_negatives/selected_img_id_ls"), "rb") as f:
         selected_img_id_ls = pickle.load(f)
 
     caption_pd = pd.read_csv(img_caption_file_name)
