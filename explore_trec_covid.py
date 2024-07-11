@@ -354,11 +354,8 @@ logging.basicConfig(format='%(asctime)s - %(message)s',
 # url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(dataset)
 dataset = "trec-covid"
 url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(dataset)
-# out_dir = os.path.join(pathlib.Path(__file__).parent.absolute(), "data")
-out_dir = "/data6/wuyinjun/beir/data/"
+out_dir = os.path.join(pathlib.Path(__file__).parent.absolute(), "data")
 data_path = util.download_and_unzip(url, out_dir)
-
-out_data_path="/data2/wuyinjun/trec-covid/"
 
 #### Provide the data_path where scifact has been downloaded and unzipped
 corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")

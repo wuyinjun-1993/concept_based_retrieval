@@ -1954,7 +1954,7 @@ def segment_single_image(image, mask_generator):
     return masks
 
 
-def segment_all_images(data_folder, img_name_ls, split="train", sam_model_type="vit_l", sam_model_folder="/data6/wuyinjun/sam/sam_vit_l_0b3195.pth", device = torch.device("cuda")):
+def segment_all_images(data_folder, img_name_ls, split="train", sam_model_type="vit_l", sam_model_folder="/data", device = torch.device("cuda")):
     image_mappings = dict()
     segment_mappings = dict()
     sam = sam_model_registry[sam_model_type](checkpoint=sam_model_folder)

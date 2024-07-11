@@ -149,7 +149,7 @@ def retrieve_by_full_query(img_emb, text_emb_ls):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='CUB concept learning')
-    parser.add_argument('--data_path', type=str, default="/data6/wuyinjun/", help='config file')
+    parser.add_argument('--data_path', type=str, default="/data/", help='config file')
     parser.add_argument('--store_path', type=str, default="output/", help='config file')
     parser.add_argument('--dataset_name', type=str, default="crepe", help='config file')
     parser.add_argument('--query_count', type=int, default=-1, help='config file')
@@ -311,10 +311,6 @@ if __name__ == "__main__":
     # pr.disable()
     # s = io.StringIO()
     # ps = pstats.Stats(pr, stream=s).sort_stats('tottime')
-    # ps.print_stats()
-
-    # with open('/home/wuyinjun/profile.txt', 'w+') as f:
-    #     f.write(s.getvalue())
     
     t2 = time.time()
     

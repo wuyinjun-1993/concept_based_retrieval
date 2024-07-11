@@ -287,7 +287,7 @@ def pre_process_caption_triples_func(x):
 
 if __name__ == "__main__":
     begin = time.time()
-    query_path = "/home/wuyinjun/concept_based_retrieval/"
+    query_path = "/data/concept_based_retrieval/"
     img_caption_file_name_output= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output3.csv")
     df = pd.read_csv(img_caption_file_name_output)
     # df = intermediate_df.copy() #can change according to user

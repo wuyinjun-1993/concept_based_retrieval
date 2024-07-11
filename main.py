@@ -136,7 +136,7 @@ def set_rand_seed(seed_value):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='CUB concept learning')
-    parser.add_argument('--data_path', type=str, default="/data6/wuyinjun/", help='config file')
+    parser.add_argument('--data_path', type=str, default="/data/", help='config file')
     parser.add_argument('--dataset_name', type=str, default="crepe", help='config file')
     parser.add_argument('--model_name', type=str, default="default", help='config file')
     parser.add_argument('--query_count', type=int, default=-1, help='config file')
