@@ -1,5 +1,0 @@
-/home/wuyinjun/concept_based_retrieval/Dessert-main-v4/CMakeFiles/dessert_py_dependency.dir
-/home/wuyinjun/concept_based_retrieval/Dessert-main-v4/CMakeFiles/edit_cache.dir
-/home/wuyinjun/concept_based_retrieval/Dessert-main-v4/CMakeFiles/rebuild_cache.dir
-/home/wuyinjun/concept_based_retrieval/Dessert-main-v4/deps/pybind/CMakeFiles/edit_cache.dir
-/home/wuyinjun/concept_based_retrieval/Dessert-main-v4/deps/pybind/CMakeFiles/rebuild_cache.dir
