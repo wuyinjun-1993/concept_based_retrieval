@@ -29,7 +29,6 @@ from derive_sub_query_dependencies import group_dependent_segments_seq_all
 import random
 from dessert_minheap_torch import *
 import pynvml
-import dessert_py_dependency
 
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco", "mscoco_40k"]
@@ -563,7 +562,7 @@ if __name__ == "__main__":
         # else:
             # patch_count_ls = [4, 8, 16, 32, 64, 128]
             if args.dataset_name.startswith("crepe"):
-                patch_count_ls = [4,16,64]
+                patch_count_ls = [4,8,16,32, 64]
                 # patch_count_ls = [32]
             elif args.dataset_name.startswith("mscoco"):
                 # patch_count_ls = [4, 8, 16, 64, 128]
@@ -621,6 +620,8 @@ if __name__ == "__main__":
         
     sample_patch_ids_to_cluster_id_mappings = None
     if args.search_by_cluster:
+        if args.index_method == "dessert":
+            import dessert_py_dependency
         if args.img_concept:
             
             # patch_clustering_info_cached_file = get_clustering_res_file_name(args, patch_count_ls)

@@ -177,7 +177,7 @@ class DenseRetrievalExactSearch:
                score_function: str,
                return_sorted: bool = False, 
                query_negations: List=None, all_sub_corpus_embedding_ls=None, query_embeddings=None, query_count=10, device = 'cuda', bboxes_ls=None, img_file_name_ls=None, bboxes_overlap_ls=None,grouped_sub_q_ids_ls=None,
-               sparse_sim_scores=None, **kwargs) -> Dict[str, Dict[str, float]]:
+               sparse_sim_scores=None, dataset_name="", **kwargs) -> Dict[str, Dict[str, float]]:
         #Create embeddings for all queries using model.encode_queries()
         #Runs semantic search against the corpus embeddings
         #Returns a ranked list with the corpus ids
@@ -259,9 +259,9 @@ class DenseRetrievalExactSearch:
         
         # all_sub_corpus_embedding_ls = [item.to(device) for item in all_sub_corpus_embedding_ls]
         corpus_idx = 0
+        # query_count=1
         
-        
-        if type(all_sub_corpus_embedding_ls) is list:
+        if type(all_sub_corpus_embedding_ls) is list or type(query_embeddings[0]) is list:
             for sub_corpus_embeddings in tqdm(all_sub_corpus_embedding_ls):    
                 #Compute similarites using either cosine-similarity or dot product
                 cos_scores = []
@@ -362,10 +362,13 @@ class DenseRetrievalExactSearch:
                 all_cos_scores_tensor = torch.cat([all_cos_scores_tensor, sparse_sim_scores.to(device).unsqueeze(1)], dim=1)
             all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
             # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
-            # if self.prob_agg == "prod":
-            all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
-            # else:
-            #     all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
+            if self.prob_agg == "prod":
+                all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+            else:
+                if dataset_name == "trec-covid":
+                    all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+                else:
+                    all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
             print(all_cos_scores_tensor)
         
         else:
