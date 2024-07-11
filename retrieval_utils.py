@@ -189,7 +189,19 @@ def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddi
     
     #     results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_loader, query_count=query_count, parallel=parallel)
     # else:
+    if type(all_sub_corpus_embedding_ls) is list:
+        all_sub_corpus_embedding_ls = [torch.nn.functional.normalize(all_sub_corpus_embedding, p=2, dim=1) for all_sub_corpus_embedding in all_sub_corpus_embedding_ls]
+    else:
+        all_sub_corpus_embedding_ls = torch.nn.functional.normalize(all_sub_corpus_embedding_ls, p=2, dim=1)
+    
+    
     t1 = time.time()
+    if type(query_embeddings[0]) is list:
+        query_embeddings = [[torch.nn.functional.normalize(query_embedding, p=2, dim=1) for query_embedding in local_query_embedding] for local_query_embedding in query_embeddings]
+    else:
+        query_embeddings = [torch.nn.functional.normalize(query_embedding, p=2, dim=1) for query_embedding in query_embeddings]
+    
+    
     if not use_clustering:
         # results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk)
         results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk, **kwargs)

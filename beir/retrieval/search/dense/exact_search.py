@@ -99,7 +99,7 @@ class DenseRetrievalExactSearch:
                 valid_sample_count += 1
             
         return valid_sample_count, valid_samples_to_patch_ids_mappings
-    
+    # @profile
     def compute_dependency_aware_sim_score(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, valid_patch_ids=None):
         if grouped_sub_q_ids_ls[query_itr] is not None:
             curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_q_ls_idx]
@@ -115,8 +115,12 @@ class DenseRetrievalExactSearch:
             curr_sub_corpus_embeddings = sub_corpus_embeddings[0:-1]
         else:
             curr_sub_corpus_embeddings = sub_corpus_embeddings
+        
+        full_scores =  self.score_functions[score_function](curr_query_embedding.to(device), curr_sub_corpus_embeddings.to(device))
+        
         for curr_grouped_sub_q_ids in curr_grouped_sub_q_ids_ls:
             
+            full_selected_embedding_idx = torch.zeros(curr_sub_corpus_embeddings.shape[0],device=device).bool()
             selected_embedding_idx = torch.arange(curr_sub_corpus_embeddings.shape[0])
             beam_search_topk=min(self.dependency_topk, curr_sub_corpus_embeddings.shape[0])
             if self.prob_agg == "prod":
@@ -129,7 +133,8 @@ class DenseRetrievalExactSearch:
                 if valid_patch_ids is not None:
                     selected_embedding_idx = torch.tensor(list(set(selected_embedding_idx.tolist()).intersection(valid_patch_ids)))
                 
-                curr_prod_mat = self.score_functions[score_function](curr_query_embedding[curr_grouped_sub_q_ids[sub_query_idx]].to(device), curr_sub_corpus_embeddings[selected_embedding_idx].to(device)).view(-1,1)
+                # curr_prod_mat =  self.score_functions[score_function](curr_query_embedding[curr_grouped_sub_q_ids[sub_query_idx]].to(device), curr_sub_corpus_embeddings.to(device)[selected_embedding_idx]).view(-1,1)
+                curr_prod_mat =  full_scores[curr_grouped_sub_q_ids[sub_query_idx], selected_embedding_idx].view(-1,1)
                 if self.prob_agg == "prod":
                     curr_prod_mat[curr_prod_mat < 0] = 0
                     prod_mat = curr_prod_mat*sub_curr_scores.view(1,-1)
@@ -141,25 +146,34 @@ class DenseRetrievalExactSearch:
                 sub_curr_scores_ls, topk_ids = torch.topk(prod_mat.view(-1), k=min(beam_search_topk, torch.numel(prod_mat)), dim=-1)
                 topk_emb_ids = topk_ids // prod_mat.shape[1]
                 
-                topk_emb_ids = selected_embedding_idx.to(device)[topk_emb_ids].tolist()
+                topk_emb_ids_tensor = selected_embedding_idx.to(device)[topk_emb_ids]
+                # topk_emb_ids = selected_embedding_idx.to(device)[topk_emb_ids].tolist()
                 # topk_emb_ids = list(set(topk_emb_ids.tolist()))
                 if sub_query_idx == 0:
-                    selected_patch_ids_ls = [[emb_id] for emb_id in topk_emb_ids]
+                    # selected_patch_ids_ls = [[emb_id] for emb_id in topk_emb_ids]
+                    selected_patch_ids_ls_tensor = topk_emb_ids_tensor.view(-1,1)
                     # selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in topk_emb_ids])
                 else:
-                    selected_seq_ids = topk_ids%prod_mat.shape[1]
-                    curr_selected_patch_ids_ls = [selected_patch_ids_ls[selected_seq_ids[selected_seq_id_idx]]+ [topk_emb_ids[selected_seq_id_idx]] for selected_seq_id_idx in range(len(selected_seq_ids))]
-                    selected_patch_ids_ls = curr_selected_patch_ids_ls
+                    # selected_seq_ids = topk_ids%prod_mat.shape[1]
+                    selected_seq_ids = torch.remainder(topk_ids, prod_mat.shape[1])
+                    # curr_selected_patch_ids_ls = [selected_patch_ids_ls[selected_seq_ids[selected_seq_id_idx]]+ [topk_emb_ids[selected_seq_id_idx]] for selected_seq_id_idx in range(len(selected_seq_ids))]
+                    curr_selected_patch_ids_ls_tensor = torch.cat([selected_patch_ids_ls_tensor[selected_seq_ids], topk_emb_ids_tensor.view(-1,1)], dim=-1)
+                    # print(torch.max(torch.abs(curr_selected_patch_ids_ls_tensor.cpu() - torch.tensor(curr_selected_patch_ids_ls))))
+                    # selected_patch_ids_ls = curr_selected_patch_ids_ls
+                    selected_patch_ids_ls_tensor = curr_selected_patch_ids_ls_tensor
                     # curr_selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in topk_emb_ids])
                     # selected_embedding_idx = torch.tensor(list(set(torch.cat([selected_embedding_idx, curr_selected_embedding_idx]).tolist())))
-                existing_topk_emb_ids = set()
-                for selected_patch_ids in selected_patch_ids_ls:
-                    existing_topk_emb_ids.update(selected_patch_ids)
+                # existing_topk_emb_ids = set()
+                # for selected_patch_ids in selected_patch_ids_ls:
+                #     existing_topk_emb_ids.update(selected_patch_ids)
+                existing_topk_emb_ids_tensor = selected_patch_ids_ls_tensor.view(-1).unique().tolist()
                 # selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in existing_topk_emb_ids])
-                selected_embedding_idx = set()
-                for topk_id in existing_topk_emb_ids:
-                    selected_embedding_idx.update(bboxes_overlap_ls[corpus_idx][topk_id])
-                selected_embedding_idx = torch.tensor(list(selected_embedding_idx))
+                # selected_embedding_idx = set()
+                for topk_id in existing_topk_emb_ids_tensor:
+                    # selected_embedding_idx.update(bboxes_overlap_ls[corpus_idx][topk_id])
+                    full_selected_embedding_idx[bboxes_overlap_ls[corpus_idx][topk_id]] = True
+                # selected_embedding_idx = torch.tensor(list(selected_embedding_idx))
+                selected_embedding_idx = full_selected_embedding_idx.nonzero().view(-1)
                 sub_curr_scores = sub_curr_scores_ls
             if self.prob_agg == "prod":
                 sub_curr_scores[sub_curr_scores <= 0] = 0
