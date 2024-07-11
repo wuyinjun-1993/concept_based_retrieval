@@ -38,14 +38,14 @@ float MaxFlash<LABEL_T>::getScore(
     _hashtable.queryByCount(query_hashes, vec_id * _hashtable.numTables(),
                             count_buffer);
     uint32_t max_count = 0;
-    // if (is_img_retrieval && num_elements == 1) {
-    //     max_count = count_buffer[count_buffer.size()-1];
-    // } else {
+    if (is_img_retrieval && num_elements == 1) {
+        max_count = count_buffer[_hashtable.numElements() - 1];
+    } else {
         for (uint32_t i = 0; i < _hashtable.numElements(); i++) {
             if (count_buffer[i] > max_count) {
                 max_count = count_buffer[i];
             }
-        // }
+        }
     }
     
     results.at(vec_id) = max_count;

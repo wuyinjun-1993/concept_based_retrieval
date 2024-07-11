@@ -61,7 +61,7 @@ std::vector<float> MaxFlashArray<LABEL_T>::getDocumentScores(
   uint32_t num_vectors_in_query = query.request().shape[0];
 
   std::vector<float> result(documents_to_query.size());
-
+  
 #pragma omp parallel default(none) \
     shared(result, documents_to_query, hashes, query, num_vectors_in_query, prob_agg, is_img_retrieval)
   {
