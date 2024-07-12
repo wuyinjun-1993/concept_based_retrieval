@@ -691,8 +691,9 @@ if __name__ == "__main__":
                 retrieval_method = utils.load(patch_clustering_info_cached_file)
             # cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls
             # cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls, sample_patch_ids_to_cluster_id_mappings = clustering_img_patch_embeddings(patch_emb_by_img_ls, args.dataset_name + "_" + str(args.total_count), patch_emb_ls, closeness_threshold=args.closeness_threshold)
-        retrieval_method._centroids = torch.nn.functional.normalize(retrieval_method._centroids, p=2, dim=0)
-        print("centroid shape::", retrieval_method._centroids.shape)
+        if not args.index_method == "dessert":
+            retrieval_method._centroids = torch.nn.functional.normalize(retrieval_method._centroids, p=2, dim=0)
+            print("centroid shape::", retrieval_method._centroids.shape)
             
             
             # if False: #os.path.exists(patch_clustering_info_cached_file):
@@ -705,8 +706,8 @@ if __name__ == "__main__":
     if args.img_concept:
         bboxes_overlap_ls, clustering_nbs_mappings = init_bbox_nbs(args, patch_count_ls, samples_hash, bboxes_ls, patch_emb_by_img_ls, sample_patch_ids_to_cluster_id_mappings)
     
-    if bboxes_overlap_ls is not None:
-        bboxes_overlap_ls = [[set(bboxes) for bboxes in bboxes_overlap] for bboxes_overlap in bboxes_overlap_ls]
+    # if bboxes_overlap_ls is not None:
+    #     bboxes_overlap_ls = [[set(bboxes) for bboxes in bboxes_overlap] for bboxes_overlap in bboxes_overlap_ls]
         # else:
         #     patch_emb_by_img_ls = reformat_patch_embeddings_txt(patch_emb_ls, img_emb)
     sparse_sim_scores = None
@@ -776,7 +777,7 @@ if __name__ == "__main__":
     retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=(args.is_img_retrieval or args.dataset_name == "webis-touche2020"), prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
     # else:
     #     retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=one)
-    retriever = EvaluateRetrieval(retrieval_model, score_function='dot') # or "cos_sim" for cosine similarity
+    retriever = EvaluateRetrieval(retrieval_model, score_function='cos_sim') # or "cos_sim" for cosine similarity
     
     if args.query_concept:
         if args.is_img_retrieval:
