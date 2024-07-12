@@ -15,6 +15,10 @@
 #include <set>
 #include <numeric>
 
+#include <Eigen/Dense>
+
+//#include <torch/torch.h>
+
 namespace thirdai::search {
 
 template <typename LABEL_T>
