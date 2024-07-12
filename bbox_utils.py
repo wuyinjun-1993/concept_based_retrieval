@@ -115,6 +115,7 @@ def init_bbox_nbs(args, patch_count_ls, samples_hash, bboxes_ls, patch_emb_by_im
         print("start generating bbox neighbor information from file: ")
         bboxes_overlap_ls, clustering_nbs_mappings = determine_overlapped_bboxes(bboxes_ls, is_img_retrieval=args.is_img_retrieval, sample_patch_ids_to_cluster_id_mappings=sample_patch_ids_to_cluster_id_mappings)
         utils.save((bboxes_overlap_ls, clustering_nbs_mappings), bboxes_overlap_file_name)
-    if not args.is_img_retrieval:
-        add_full_bbox_to_bbox_nb_ls(bboxes_overlap_ls, bboxes_ls, patch_emb_by_img_ls)
+    # if not args.is_img_retrieval:
+    #     if not args.dataset_name == "webis-touche2020":
+    add_full_bbox_to_bbox_nb_ls(bboxes_overlap_ls, bboxes_ls, patch_emb_by_img_ls)
     return bboxes_overlap_ls, clustering_nbs_mappings

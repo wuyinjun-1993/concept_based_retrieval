@@ -158,7 +158,7 @@ def parse_args():
     parser.add_argument("--add_sparse_index", action="store_true", help="config file")
     
     parser.add_argument('--retrieval_method', type=str, default="ours", help='config file')
-    parser.add_argument('--index_method', type=str, default="default", choices=["default", "dessert"], help='config file')
+    parser.add_argument('--index_method', type=str, default="default", choices=["default", "dessert", "dessert0"], help='config file')
     parser.add_argument('--hashes_per_table', type=int, default=5, help='config file')
     # num_tables
     parser.add_argument('--num_tables', type=int, default=100, help='config file')
@@ -394,10 +394,10 @@ if __name__ == "__main__":
         data_path = util.download_and_unzip(url, full_data_path)
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
         full_query_key_ls = [str(idx + 1) for idx in range(len(queries))]
-        try:
-            queries= read_queries_from_file(os.path.join(full_data_path, "queries.jsonl")) #, subset_img_id=args.subset_img_id)
-        except:
-            pass
+        # try:
+        #     queries= read_queries_from_file(os.path.join(full_data_path, "queries.jsonl")) #, subset_img_id=args.subset_img_id)
+        # except:
+        #     pass
         # query_key_ls = full_query_key_ls#list(queries.keys())
         if args.is_test:
             query_key=str(2)
@@ -625,7 +625,11 @@ if __name__ == "__main__":
         if args.img_concept:
             
             # patch_clustering_info_cached_file = get_clustering_res_file_name(args, patch_count_ls)
-            
+            if type(patch_emb_by_img_ls) is list:
+                patch_emb_by_img_ls = [torch.nn.functional.normalize(all_sub_corpus_embedding, p=2, dim=1) for all_sub_corpus_embedding in patch_emb_by_img_ls]
+            else:
+                patch_emb_by_img_ls = torch.nn.functional.normalize(patch_emb_by_img_ls, p=2, dim=1)
+    
             
             patch_clustering_info_cached_file = get_dessert_clustering_res_file_name(samples_hash, patch_count_ls, clustering_number=args.clustering_number, index_method=args.index_method, typical_doclen=args.clustering_doc_count_factor, num_tables=args.num_tables, hashes_per_table=args.hashes_per_table)
             
@@ -640,24 +644,24 @@ if __name__ == "__main__":
                 # centroids = torch.zeros([1, patch_emb_by_img_ls[-1].shape[-1]])
                 # hashes_per_table: int, num_tables
                 max_patch_count = max([len(patch_emb_by_img_ls[idx]) for idx in range(len(patch_emb_by_img_ls))])
-                if args.index_method == "default":
+                if not args.index_method == "dessert":
                     retrieval_method = DocRetrieval(max_patch_count, args.hashes_per_table, args.num_tables, patch_emb_by_img_ls[-1].shape[-1], centroids, device=device)
                 else:
                     retrieval_method = dessert_py_dependency.DocRetrieval(hashes_per_table = args.hashes_per_table, num_tables = args.num_tables, dense_input_dimension = patch_emb_by_img_ls[-1].shape[-1], nprobe_query=args.nprobe_query, centroids = centroids.detach().cpu().numpy().astype(np.float32));
 
                 for idx in tqdm(range(len(patch_emb_by_img_ls)), desc="add doc"):
-                    if args.index_method == "default":
+                    if not args.index_method == "dessert":
                         retrieval_method.add_doc(patch_emb_by_img_ls[idx], idx, index_method=args.index_method)
                     else:
                         retrieval_method.add_doc(patch_emb_by_img_ls[idx].detach().cpu().numpy().astype(np.float32), str(idx))
                 
                 # utils.save(retrieval_method, "output/retrieval_method.pkl")
-                if args.index_method == "default":
+                if not args.index_method == "dessert":
                     utils.save(retrieval_method, patch_clustering_info_cached_file)
                 else:
                     retrieval_method.serialize_to_file(patch_clustering_info_cached_file)
             else:
-                if args.index_method == "default":
+                if not args.index_method == "dessert":
                     retrieval_method = utils.load(patch_clustering_info_cached_file)
                 else:
                     retrieval_method = dessert_py_dependency.DocRetrieval.deserialize_from_file(patch_clustering_info_cached_file)
@@ -687,7 +691,8 @@ if __name__ == "__main__":
                 retrieval_method = utils.load(patch_clustering_info_cached_file)
             # cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls
             # cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls,cluster_sample_ids_ls, cluster_sub_X_patch_ids_ls, cluster_sub_X_granularity_ids_ls, cluster_sub_X_cat_patch_ids_ls, sample_patch_ids_to_cluster_id_mappings = clustering_img_patch_embeddings(patch_emb_by_img_ls, args.dataset_name + "_" + str(args.total_count), patch_emb_ls, closeness_threshold=args.closeness_threshold)
-            
+        retrieval_method._centroids = torch.nn.functional.normalize(retrieval_method._centroids, p=2, dim=0)
+        print("centroid shape::", retrieval_method._centroids.shape)
             
             
             # if False: #os.path.exists(patch_clustering_info_cached_file):
@@ -701,7 +706,7 @@ if __name__ == "__main__":
         bboxes_overlap_ls, clustering_nbs_mappings = init_bbox_nbs(args, patch_count_ls, samples_hash, bboxes_ls, patch_emb_by_img_ls, sample_patch_ids_to_cluster_id_mappings)
     
     if bboxes_overlap_ls is not None:
-        bboxes_overlap_ls = [[torch.tensor(bboxes).to(device) for bboxes in bboxes_overlap] for bboxes_overlap in bboxes_overlap_ls]
+        bboxes_overlap_ls = [[set(bboxes) for bboxes in bboxes_overlap] for bboxes_overlap in bboxes_overlap_ls]
         # else:
         #     patch_emb_by_img_ls = reformat_patch_embeddings_txt(patch_emb_ls, img_emb)
     sparse_sim_scores = None

@@ -190,25 +190,26 @@ def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddi
     #     results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_loader, query_count=query_count, parallel=parallel)
     # else:
     if type(all_sub_corpus_embedding_ls) is list:
-        all_sub_corpus_embedding_ls = [torch.nn.functional.normalize(all_sub_corpus_embedding, p=2, dim=1) for all_sub_corpus_embedding in all_sub_corpus_embedding_ls]
+        all_sub_corpus_embedding_ls = [torch.nn.functional.normalize(all_sub_corpus_embedding, p=2, dim=-1) for all_sub_corpus_embedding in all_sub_corpus_embedding_ls]
     else:
-        all_sub_corpus_embedding_ls = torch.nn.functional.normalize(all_sub_corpus_embedding_ls, p=2, dim=1)
+        all_sub_corpus_embedding_ls = torch.nn.functional.normalize(all_sub_corpus_embedding_ls, p=2, dim=-1)
     
     
     t1 = time.time()
     if type(query_embeddings[0]) is list:
-        query_embeddings = [[torch.nn.functional.normalize(query_embedding, p=2, dim=1) for query_embedding in local_query_embedding] for local_query_embedding in query_embeddings]
+        query_embeddings = [[torch.nn.functional.normalize(query_embedding, p=2, dim=-1) for query_embedding in local_query_embedding] for local_query_embedding in query_embeddings]
     else:
-        query_embeddings = [torch.nn.functional.normalize(query_embedding, p=2, dim=1) for query_embedding in query_embeddings]
+        query_embeddings = [torch.nn.functional.normalize(query_embedding, p=2, dim=-1) for query_embedding in query_embeddings]
     
-    
+    kwargs["dataset_name"] = dataset_name
     if not use_clustering:
+        
         # results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk)
         results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk, **kwargs)
     else:
-        if index_method == "default":
+        if not index_method == "dessert":
+            kwargs['index_method'] = index_method
             doc_retrieval._nprobe_query = _nprobe_query #max(2, int(clustering_topk/20))
-            kwargs["dataset_name"] = dataset_name
             results = doc_retrieval.query_multi_queries(all_sub_corpus_embedding_ls, query_embeddings, top_k=min(clustering_topk,len(all_sub_corpus_embedding_ls)), num_to_rerank=min(clustering_topk,len(all_sub_corpus_embedding_ls)), prob_agg=prob_agg,method=method, **kwargs)
         else:
             kwargs['clustering_topk'] = clustering_topk

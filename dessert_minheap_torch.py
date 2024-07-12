@@ -29,10 +29,11 @@ def dot_scores(a: torch.Tensor, b: torch.Tensor):
     if len(b.shape) == 1:
         b = b.unsqueeze(0)
 
-    # a_norm = torch.nn.functional.normalize(a, p=2, dim=1)
-    # b_norm = torch.nn.functional.normalize(b, p=2, dim=1)
+    a_norm = torch.nn.functional.normalize(a, p=2, dim=1)
+    b_norm = torch.nn.functional.normalize(b, p=2, dim=1)
     return torch.mm(a_norm, b_norm.transpose(0, 1)) #TODO: this keeps allocating GPU memory
-
+    # return torch.mm(a, b.transpose(0, 1)) #TODO: this keeps allocating GPU memory
+# @profile
 def compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, prob_agg = "prod", is_img_retrieval=False, dependency_topk=50, valid_patch_ids=None):
         if grouped_sub_q_ids_ls[query_itr] is not None:
             curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_q_ls_idx]
@@ -45,7 +46,7 @@ def compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddin
             curr_scores_ls = 0
         # curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
         if is_img_retrieval:
-            curr_sub_corpus_embeddings = sub_corpus_embeddings[0:-1]
+            curr_sub_corpus_embeddings = sub_corpus_embeddings #[0:-1]
         else:
             curr_sub_corpus_embeddings = sub_corpus_embeddings
             
@@ -95,19 +96,22 @@ def compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddin
                     selected_patch_ids_ls_tensor = curr_selected_patch_ids_ls_tensor
                     # curr_selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in topk_emb_ids])
                     # selected_embedding_idx = torch.tensor(list(set(torch.cat([selected_embedding_idx, curr_selected_embedding_idx]).tolist())))
-                existing_topk_emb_ids_tensor = selected_patch_ids_ls_tensor.view(-1).unique().tolist()
+                # existing_topk_emb_ids_tensor = selected_patch_ids_ls_tensor.view(-1).unique().tolist()
                 # existing_topk_emb_ids = set()
                 # for selected_patch_ids in selected_patch_ids_ls:
                 #     existing_topk_emb_ids.update(selected_patch_ids)
+                existing_topk_emb_ids = set()
+                for selected_patch_ids in selected_patch_ids_ls_tensor.tolist():
+                    existing_topk_emb_ids.update(selected_patch_ids)
                 # # selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in existing_topk_emb_ids])
-                # selected_embedding_idx = set()
-                # for topk_id in existing_topk_emb_ids:
-                #     selected_embedding_idx.update(bboxes_overlap_ls[corpus_idx][topk_id])
-                for topk_id in existing_topk_emb_ids_tensor:
-                    # selected_embedding_idx.update(bboxes_overlap_ls[corpus_idx][topk_id])
-                    full_selected_embedding_idx[bboxes_overlap_ls[corpus_idx][topk_id]] = True
-                # selected_embedding_idx = torch.tensor(list(selected_embedding_idx))
-                selected_embedding_idx = full_selected_embedding_idx.nonzero().view(-1)
+                selected_embedding_idx = set()
+                for topk_id in existing_topk_emb_ids:
+                    selected_embedding_idx.update(bboxes_overlap_ls[corpus_idx][topk_id])
+                # for topk_id in existing_topk_emb_ids_tensor:
+                #     # selected_embedding_idx.update(bboxes_overlap_ls[corpus_idx][topk_id])
+                #     full_selected_embedding_idx[bboxes_overlap_ls[corpus_idx][topk_id]] = True
+                selected_embedding_idx = torch.tensor(list(selected_embedding_idx))
+                # selected_embedding_idx = full_selected_embedding_idx.nonzero().view(-1)
                 sub_curr_scores = sub_curr_scores_ls
             if prob_agg == "prod":
                 sub_curr_scores[sub_curr_scores <= 0] = 0
