@@ -46,7 +46,7 @@ def compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddin
             curr_scores_ls = 0
         # curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
         if is_img_retrieval:
-            curr_sub_corpus_embeddings = sub_corpus_embeddings #[0:-1]
+            curr_sub_corpus_embeddings = sub_corpus_embeddings[0:-1]
         else:
             curr_sub_corpus_embeddings = sub_corpus_embeddings
             
@@ -368,19 +368,30 @@ class MaxFlash:
                 sub_curr_scores_ls, topk_ids = torch.topk(prod_mat.view(-1), k=min(beam_search_topk, torch.numel(prod_mat)), dim=-1)
                 topk_emb_ids = topk_ids // prod_mat.shape[1]
                 
-                topk_emb_ids = selected_embedding_idx.to(device)[topk_emb_ids].tolist()
+                # topk_emb_ids = selected_embedding_idx.to(device)[topk_emb_ids].tolist()
+                topk_emb_ids_tensor = selected_embedding_idx.to(device)[topk_emb_ids]
                 # topk_emb_ids = list(set(topk_emb_ids.tolist()))
                 if sub_query_idx == 0:
-                    selected_patch_ids_ls = [[emb_id] for emb_id in topk_emb_ids]
+                    # selected_patch_ids_ls = [[emb_id] for emb_id in topk_emb_ids]
+                    selected_patch_ids_ls_tensor = topk_emb_ids_tensor.view(-1,1)
                     # selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in topk_emb_ids])
                 else:
-                    selected_seq_ids = topk_ids%prod_mat.shape[1]
-                    curr_selected_patch_ids_ls = [selected_patch_ids_ls[selected_seq_ids[selected_seq_id_idx]]+ [topk_emb_ids[selected_seq_id_idx]] for selected_seq_id_idx in range(len(selected_seq_ids))]
-                    selected_patch_ids_ls = curr_selected_patch_ids_ls
+                    # selected_seq_ids = topk_ids%prod_mat.shape[1]
+                    # curr_selected_patch_ids_ls = [selected_patch_ids_ls[selected_seq_ids[selected_seq_id_idx]]+ [topk_emb_ids[selected_seq_id_idx]] for selected_seq_id_idx in range(len(selected_seq_ids))]
+                    # selected_patch_ids_ls = curr_selected_patch_ids_ls
+                    selected_seq_ids = torch.remainder(topk_ids, prod_mat.shape[1])
+                    # curr_selected_patch_ids_ls = [selected_patch_ids_ls[selected_seq_ids[selected_seq_id_idx]]+ [topk_emb_ids[selected_seq_id_idx]] for selected_seq_id_idx in range(len(selected_seq_ids))]
+                    curr_selected_patch_ids_ls_tensor = torch.cat([selected_patch_ids_ls_tensor[selected_seq_ids], topk_emb_ids_tensor.view(-1,1)], dim=-1)
+                    # print(torch.max(torch.abs(curr_selected_patch_ids_ls_tensor.cpu() - torch.tensor(curr_selected_patch_ids_ls))))
+                    # selected_patch_ids_ls = curr_selected_patch_ids_ls
+                    selected_patch_ids_ls_tensor = curr_selected_patch_ids_ls_tensor
                     # curr_selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in topk_emb_ids])
                     # selected_embedding_idx = torch.tensor(list(set(torch.cat([selected_embedding_idx, curr_selected_embedding_idx]).tolist())))
+                # existing_topk_emb_ids = set()
+                # for selected_patch_ids in selected_patch_ids_ls:
+                #     existing_topk_emb_ids.update(selected_patch_ids)
                 existing_topk_emb_ids = set()
-                for selected_patch_ids in selected_patch_ids_ls:
+                for selected_patch_ids in selected_patch_ids_ls_tensor.tolist():
                     existing_topk_emb_ids.update(selected_patch_ids)
                 # selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in existing_topk_emb_ids])
                 selected_embedding_idx = set()
