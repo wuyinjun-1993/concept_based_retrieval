@@ -503,7 +503,7 @@ class MaxFlashArray:
                 curr_scores_ls[curr_scores_ls < 0] = 0
                 curr_scores = torch.prod(curr_scores_ls)
             else:
-                curr_scores = torch.sum(curr_scores_ls)
+                curr_scores = torch.mean(curr_scores_ls)
             # curr_scores = torch.sum(curr_scores_ls)
             # curr_scores = torch.sum(curr_scores_ls)
         else:
@@ -635,6 +635,20 @@ class DocRetrieval:
         centroid_ids = self.getNearestCentroids(query_embeddings, self._nprobe_query)
         return self.query_with_centroids(document_embs_ls, query_embeddings, centroid_ids, top_k, num_to_rerank, prob_agg=prob_agg, **kwargs)
 
+    def compute_scores_single_query(self, top_k_internal_ids, document_embs_ls:list, embeddings: torch.tensor, **kwargs):
+        sum_sim = self.rankDocuments(document_embs_ls, embeddings, top_k_internal_ids, **kwargs)
+
+        # result_size = min(len(reranked), top_k)
+        # result = [self._internal_id_to_doc_id[reranked[i]] for i in range(result_size)]
+
+        # return result
+        
+        
+        # sorted_indices = argsort_descending(sum_sim).cpu()
+        # print(sum_sim)
+        
+        return sum_sim #[sorted_indices]
+
     def query_multi_queries(self, document_embs_ls, query_embedding_ls, top_k: int, num_to_rerank: int, prob_agg="prod", dataset_name="", **kwargs):
         all_cos_scores = []
         query_ids = [str(idx+1) for idx in list(range(len(query_embedding_ls)))]
@@ -646,8 +660,11 @@ class DocRetrieval:
         expected_idx_ls = []
         for idx in tqdm(range(query_count)): #, desc="Querying":
             cos_scores_ls=[]
+            sample_ids = self.query(document_embs_ls, torch.cat(query_embedding_ls[idx], dim=0), top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, **kwargs)
+            
             for sub_idx in range(len(query_embedding_ls[idx])):
-                cos_scores,sample_ids = self.query(document_embs_ls, query_embedding_ls[idx][sub_idx], top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, query_sub_idx =sub_idx, **kwargs)
+                # top_k_internal_ids, document_embs_ls:list, embeddings: torch.tensor, method="two", prob_agg="prod", **kwargs
+                cos_scores = self.compute_scores_single_query(sample_ids, document_embs_ls, query_embedding_ls[idx][sub_idx], prob_agg=prob_agg, query_idx=idx, query_sub_idx =sub_idx, **kwargs)
                 # cos_scores_ls.append(cos_scores)
                 # if sub_idx == 0:
                 #     # print(idx, idx in sample_ids, sample_ids)
@@ -696,18 +713,7 @@ class DocRetrieval:
 
         top_k_internal_ids = self.frequencyCountCentroidBuckets(centroid_ids, num_to_rerank)
         top_k_internal_ids = remove_duplicates(top_k_internal_ids)
-        sum_sim = self.rankDocuments(document_embs_ls, embeddings, top_k_internal_ids, method=method,prob_agg=prob_agg, **kwargs)
-
-        # result_size = min(len(reranked), top_k)
-        # result = [self._internal_id_to_doc_id[reranked[i]] for i in range(result_size)]
-
-        # return result
-        
-        
-        # sorted_indices = argsort_descending(sum_sim).cpu()
-        # print(sum_sim)
-        
-        return sum_sim, top_k_internal_ids #[sorted_indices]
+        return top_k_internal_ids
         # return scores
 
     def rankDocuments(self, document_embs_ls: list, query_embeddings: torch.tensor, internal_ids_to_rerank: torch.tensor, method="two",prob_agg="sum", **kwargs):
