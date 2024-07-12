@@ -112,7 +112,7 @@ class DenseRetrievalExactSearch:
             curr_scores_ls = 0
         # curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
         if self.is_img_retrieval:
-            curr_sub_corpus_embeddings = sub_corpus_embeddings #[0:-1]
+            curr_sub_corpus_embeddings = sub_corpus_embeddings[0:-1]
         else:
             curr_sub_corpus_embeddings = sub_corpus_embeddings
         
@@ -333,7 +333,7 @@ class DenseRetrievalExactSearch:
                                 curr_scores = torch.max(torch.prod(curr_scores_ls, dim=0))
                                 full_curr_scores_ls.append(curr_scores.item())
                             elif self.algebra_method == three:
-                                curr_scores = torch.max(torch.sum(curr_scores_ls, dim=0))
+                                curr_scores = torch.max(torch.mean(curr_scores_ls, dim=0))
                                 # curr_scores = torch.max(torch.max(curr_scores_ls, dim=0))
                                 full_curr_scores_ls.append(curr_scores.item())
                             elif self.algebra_method == two:
@@ -347,7 +347,7 @@ class DenseRetrievalExactSearch:
                                     curr_scores_ls[curr_scores_ls < 0] = 0
                                     curr_scores = torch.prod(curr_scores_ls)
                                 else:
-                                    curr_scores = torch.sum(curr_scores_ls)
+                                    curr_scores = torch.mean(curr_scores_ls)
                                 # curr_scores = torch.sum(curr_scores_ls)
                                 # curr_scores = torch.sum(curr_scores_ls)
                                 full_curr_scores_ls.append(curr_scores.item())

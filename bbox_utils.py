@@ -101,6 +101,15 @@ def add_full_bbox_to_bbox_nb_ls(bbox_nb_ls, bboxes_ls, patch_img_embes_ls):
             
             bbox_nbs.append(list(range(len(bboxes) + 1)))
             
+def remove_full_bbox_from_bbox_nb_ls(bbox_nb_ls, bboxes_ls, patch_img_embes_ls):
+    for idx in tqdm(range(len(bbox_nb_ls)), desc="remove full bbox"):
+        patch_img_embes = patch_img_embes_ls[idx]
+        bboxes = bboxes_ls[idx]
+        bbox_nbs = bbox_nb_ls[idx]
+        if len(bbox_nbs) == len(patch_img_embes):
+            del bbox_nbs[-1]
+            for sub_idx in range(len(bbox_nbs)):
+                del bbox_nbs[sub_idx][-1]
 
 def init_bbox_nbs(args, patch_count_ls, samples_hash, bboxes_ls, patch_emb_by_img_ls, sample_patch_ids_to_cluster_id_mappings=None):
     patch_count_ls = sorted(patch_count_ls)
@@ -118,4 +127,6 @@ def init_bbox_nbs(args, patch_count_ls, samples_hash, bboxes_ls, patch_emb_by_im
     if not args.is_img_retrieval:
         if not args.dataset_name == "webis-touche2020":
             add_full_bbox_to_bbox_nb_ls(bboxes_overlap_ls, bboxes_ls, patch_emb_by_img_ls)
+        else:
+            remove_full_bbox_from_bbox_nb_ls(bboxes_overlap_ls, bboxes_ls, patch_emb_by_img_ls)
     return bboxes_overlap_ls, clustering_nbs_mappings
