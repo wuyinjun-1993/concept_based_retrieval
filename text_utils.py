@@ -7,7 +7,7 @@ import re
 import json
 from retrieval_utils import decompose_single_query_parition_groups, decompose_single_query_ls
 from sparse_index import construct_sparse_index, store_sparse_index
-from LLM4split.prompt_utils import obtain_response_from_openai
+from LLM4split.prompt_utils import obtain_response_from_openai, init_phi_utils, obtain_response_from_phi_utils
 sparse_prefix='<s><|system|>\\nYou are an AI assistant that can understand human language.<|end|>\\n<|user|>\\nQuery: "'
 sparse_suffix='". Use one most important word to represent the query in retrieval task. Make sure your word is in lowercase.<|end|>\\n<|assistant|>\\nThe word is: "'
 import time
@@ -326,7 +326,7 @@ def reformat_patch_embeddings_txt(patch_emb_ls, img_emb):
     return patch_emb_curr_img_ls
 
 
-def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, query_key_ls=None, cached_file_suffix="", dataset_name = "trec-covid"):
+def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, query_key_ls=None, cached_file_suffix="", dataset_name = "trec-covid", use_phi=False, pipe = None, generation_args = None):
     if query_hash is not None:
         sub_query_file_name = os.path.join(data_path, f"sub_queries_{query_hash}.json")
     else:
@@ -355,7 +355,9 @@ def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, quer
         for qid in query_key_ls:
             query = queries[qid]
             # sub_caption_str=obtain_response_from_openai(dataset_name = "trec-covid", query=query)
-            sub_caption_str=obtain_response_from_openai(dataset_name = dataset_name, query=query)
+
+            sub_caption_str=obtain_response_from_openai(dataset_name = dataset_name, query=query, use_phi=use_phi, pipe=pipe, generation_args=generation_args)
+
             sub_captions = decompose_single_query_ls(sub_caption_str)
             sub_queries[rid_to_idx[qid]] = sub_captions
             time.sleep(2)
