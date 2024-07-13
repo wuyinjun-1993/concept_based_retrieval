@@ -326,7 +326,7 @@ def reformat_patch_embeddings_txt(patch_emb_ls, img_emb):
     return patch_emb_curr_img_ls
 
 
-def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, query_key_ls=None, cached_file_suffix="", dataset_name = "trec-covid", use_phi=False, pipe = None, generation_args = None):
+def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, query_key_ls=None, cached_file_suffix="", dataset_name = "crepe", use_phi=False, pipe = None, generation_args = None):
     if query_hash is not None:
         sub_query_file_name = os.path.join(data_path, f"sub_queries_{query_hash}.json")
     else:
