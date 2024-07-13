@@ -416,7 +416,7 @@ if __name__ == "__main__":
         # query_key_ls = sorted(query_key_ls)
 
         
-        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, use_phi=args.use_phi, pipe=pipe, generation_args=generation_args)
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, use_phi=args.use_phi, pipe=pipe, generation_args=generation_args, dataset_name="trec-covid")
         print(sub_queries_ls)
         if args.is_test:
             sub_queries_ls = {"1": sub_queries_ls[query_key]}
