@@ -496,7 +496,7 @@ if __name__ == "__main__":
         # query_key_ls = sorted(query_key_ls)
         query_hash = "full"
         # query_hash = "full"
-        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash, dataset_name="fiqa")
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash, dataset_name="crepe")
         print(sub_queries_ls)
         # sub_queries_ls = {}
         
