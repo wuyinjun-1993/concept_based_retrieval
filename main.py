@@ -422,12 +422,12 @@ if __name__ == "__main__":
             sub_queries_ls = {"1": sub_queries_ls[query_key]}
             print(sub_queries_ls)
         
-        subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
-        if False: #os.path.exists(subset_file_name):
-            corpus, qrels = utils.load(subset_file_name)
-        else:        
-            corpus, qrels = subset_corpus(corpus, qrels, args.total_count)
-            utils.save((corpus, qrels), subset_file_name)
+        # subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
+        # if False: #os.path.exists(subset_file_name):
+        #     corpus, qrels = utils.load(subset_file_name)
+        # else:        
+        #     corpus, qrels = subset_corpus(corpus, qrels, args.total_count)
+        #     utils.save((corpus, qrels), subset_file_name)
         
         qrels = {key: qrels[idx_to_rid[key]] for key in sub_queries_ls if not check_empty_mappings(qrels[idx_to_rid[key]])}
         
@@ -455,9 +455,9 @@ if __name__ == "__main__":
         queries = {key:queries[key] for key in query_key_ls}
         # query_key_ls = random.sample(full_query_key_ls, 100)
         # query_key_ls = sorted(query_key_ls)
-        query_hash = None
-        # query_hash = "full"
-        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash, dataset_name="fiqa")
+        # query_hash = None
+        query_hash = "full"
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash, dataset_name="trec-covid")
         # sub_queries_ls = {"1":[['1 EIN", "multiple business names']]}
         print(sub_queries_ls)
         
@@ -496,7 +496,7 @@ if __name__ == "__main__":
         # query_key_ls = sorted(query_key_ls)
         query_hash = "full"
         # query_hash = "full"
-        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash, dataset_name="trec-covid")
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash, dataset_name="fiqa")
         print(sub_queries_ls)
         # sub_queries_ls = {}
         
@@ -583,10 +583,11 @@ if __name__ == "__main__":
                 patch_count_ls = [1, 4, 8, 16, 32]
     else:
         # patch_count_ls = [8, 24, 32]
-        if not args.dataset_name == "fiqa":
-            patch_count_ls = [1, 4, 8, 16, 32]
-        else:
-            patch_count_ls = [4, 32, 128, 256]
+        patch_count_ls = [1, 16, 8, 4, 32]
+        # if not args.dataset_name == "fiqa":
+        #     patch_count_ls = [1, 4, 8, 16, 32]
+        # else:
+        #     patch_count_ls = [4, 32, 128, 256]
         # patch_count_ls = [1]
         # patch_count_ls = [32]
     
@@ -782,10 +783,11 @@ if __name__ == "__main__":
     # retrieve_by_full_query(img_emb, text_emb_ls)
     
     # if args.is_img_retrieval:
-    retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=(args.is_img_retrieval), prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
+    retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=(args.is_img_retrieval or args.dataset_name == "webis-touche2020"), prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
+    # retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=True, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
     # else:
     #     retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=one)
-    retriever = EvaluateRetrieval(retrieval_model, score_function='dot') # or "cos_sim" for cosine similarity
+    retriever = EvaluateRetrieval(retrieval_model, score_function='cos_sim') # or "cos_sim" for cosine similarity
     
     if args.query_concept:
         if args.is_img_retrieval:
@@ -804,8 +806,8 @@ if __name__ == "__main__":
                 # results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
                 results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, dataset_name=args.dataset_name)
         else:
-            # if args.dataset_name == "webis-touche2020":
-            #     args.is_img_retrieval = True
+            if args.dataset_name == "webis-touche2020":
+                args.is_img_retrieval = True
                 
             if not args.search_by_cluster:
                 results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name, is_img_retrieval=args.is_img_retrieval)
