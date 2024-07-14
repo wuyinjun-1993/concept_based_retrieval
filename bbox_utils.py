@@ -29,7 +29,7 @@ def is_bbox_overlapped_text(bbox1, bbox2):
     min_size = min(size1, size2)
     thres = 0.1 * min_size
     # print(intersection_area, thres)
-    return intersection_area > 0.5 * min_size
+    return intersection_area > 0.2 * min_size
 
 def add_clustering_nbs_info(clustering_nbs_mappings, sample_idx, cluster_idx1, cluster_idx2):
     if cluster_idx1 not in clustering_nbs_mappings:
@@ -119,7 +119,7 @@ def init_bbox_nbs(args, patch_count_ls, samples_hash, bboxes_ls, patch_emb_by_im
     
     bboxes_overlap_file_name = "output/bboxes_overlap_" + samples_hash + "_" + patch_count_str + ".pkl"   
     
-    if False: #os.path.exists(bboxes_overlap_file_name):
+    if os.path.exists(bboxes_overlap_file_name):
         print("load bbox neighbor information from file: ", bboxes_overlap_file_name)
         bboxes_overlap_ls, clustering_nbs_mappings = utils.load(bboxes_overlap_file_name)
     else:
@@ -127,8 +127,8 @@ def init_bbox_nbs(args, patch_count_ls, samples_hash, bboxes_ls, patch_emb_by_im
         bboxes_overlap_ls, clustering_nbs_mappings = determine_overlapped_bboxes(bboxes_ls, is_img_retrieval=args.is_img_retrieval, sample_patch_ids_to_cluster_id_mappings=sample_patch_ids_to_cluster_id_mappings)
         utils.save((bboxes_overlap_ls, clustering_nbs_mappings), bboxes_overlap_file_name)
     if not args.is_img_retrieval:
-        if not args.dataset_name == "webis-touche2020":
-            add_full_bbox_to_bbox_nb_ls(bboxes_overlap_ls, bboxes_ls, patch_emb_by_img_ls)
-        else:
+        # if not args.dataset_name == "webis-touche2020":
+        #     add_full_bbox_to_bbox_nb_ls(bboxes_overlap_ls, bboxes_ls, patch_emb_by_img_ls)
+        # else:
             remove_full_bbox_from_bbox_nb_ls(bboxes_overlap_ls, bboxes_ls, patch_emb_by_img_ls)
     return bboxes_overlap_ls, clustering_nbs_mappings

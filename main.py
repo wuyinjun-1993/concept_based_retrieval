@@ -783,8 +783,8 @@ if __name__ == "__main__":
     # retrieve_by_full_query(img_emb, text_emb_ls)
     
     # if args.is_img_retrieval:
-    retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=(args.is_img_retrieval or args.dataset_name == "webis-touche2020"), prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
-    # retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=True, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
+    # retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=(args.is_img_retrieval or args.dataset_name == "webis-touche2020"), prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
+    retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=True, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
     # else:
     #     retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=one)
     retriever = EvaluateRetrieval(retrieval_model, score_function='cos_sim') # or "cos_sim" for cosine similarity
@@ -806,8 +806,8 @@ if __name__ == "__main__":
                 # results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
                 results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, dataset_name=args.dataset_name)
         else:
-            if args.dataset_name == "webis-touche2020":
-                args.is_img_retrieval = True
+            # if args.dataset_name == "webis-touche2020":
+            args.is_img_retrieval = True
                 
             if not args.search_by_cluster:
                 results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name, is_img_retrieval=args.is_img_retrieval)

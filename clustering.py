@@ -254,11 +254,12 @@ def construct_sample_patch_ids_ls(all_bboxes_ls):
     return sample_sub_ids_ls, sample_granularity_ids_ls
 
 def get_patch_count_str(patch_count_ls):
-    patch_count_ls = sorted(patch_count_ls)
+    # patch_count_ls = sorted(patch_count_ls)
     patch_count_str = "_".join([str(patch_count) for patch_count in patch_count_ls])
     return patch_count_str
 
 def get_clustering_res_file_name(args, hashes, patch_count_ls):
+    patch_count_ls = sorted(patch_count_ls)
     patch_count_str = get_patch_count_str(patch_count_ls)
     if args.clustering_doc_count_factor == 1:
         centroid_ls_file_name=f"output/centroid_ls_{hashes}_{patch_count_str}_{args.clustering_number}.pt"

@@ -542,7 +542,10 @@ class MaxFlashArray:
         # if self.algebra_method == one or self.algebra_method == three:
         #     curr_scores_ls = self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
         if algebra_method == "two":
-            curr_scores_ls = torch.max(dot_scores(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
+            if is_img_retrieval:
+                curr_scores_ls = torch.max(dot_scores(curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
+            else:
+                curr_scores_ls = torch.max(dot_scores(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
             
             # curr_scores_ls_max_id = torch.argmax(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
         else:
@@ -748,13 +751,13 @@ class DocRetrieval:
         #     all_cos_scores.append(cos_scores)        
         # all_cos_scores_tensor = torch.stack(all_cos_scores)
 
-        all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
+        # all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
         # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
         if prob_agg == "prod":
             all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
         else:
             if dataset_name == "trec-covid":
-                all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+                all_cos_scores_tensor = torch.sum(all_cos_scores_tensor, dim=1)
             else:
                 all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
         print(all_cos_scores_tensor.shape)
