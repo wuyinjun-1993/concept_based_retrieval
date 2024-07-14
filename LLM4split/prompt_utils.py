@@ -57,7 +57,7 @@ def prompt_trec_covid_training():
     Q: \"what are the guidelines for triaging patients infected with coronavirus?\", \
     A: \"guidelines for triaging patients | infected with coronavirus\", \
     Q: \"what kinds of complications related to COVID-19 are associated with hypertension?\", \
-    A: \"what complications | complications related to COVID-19 | complications associated with hypertension\", \
+    A: \"complications related to COVID-19 | complications associated with hypertension\", \
     Q: \"what are the health outcomes for children who contract COVID-19?\", \
     A: \"health outcomes for children | children who contract COVID-19\", \
     "
@@ -297,15 +297,21 @@ def obtain_response_from_gpt_utils(prompt_test):
 
 def init_phi_utils():
     model_id = "microsoft/Phi-3-medium-4k-instruct"
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        device_map="cpu",
-        torch_dtype="auto",
-        trust_remote_code=True,
-    )
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
-    torch.save(model, "output/phi_model.pt")
-    torch.save(tokenizer, "output/phi_tokenizer.pt")
+    if os.path.exists("output/phi_model.pt") and os.path.exists("output/phi_tokenizer.pt"):
+        model = torch.load("output/phi_model.pt")
+        tokenizer = torch.load("output/phi_tokenizer.pt")
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            device_map="cpu",
+            torch_dtype="auto",
+            trust_remote_code=True,
+        )
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        torch.save(model, "output/phi_model.pt")
+        torch.save(tokenizer, "output/phi_tokenizer.pt")
+    
+    model = model.cuda()
     pipe = pipeline(
         "text-generation",
         model=model,

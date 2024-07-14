@@ -333,7 +333,7 @@ class DenseRetrievalExactSearch:
                                 curr_scores = torch.max(torch.prod(curr_scores_ls, dim=0))
                                 full_curr_scores_ls.append(curr_scores.item())
                             elif self.algebra_method == three:
-                                curr_scores = torch.max(torch.mean(curr_scores_ls, dim=0))
+                                curr_scores = torch.max(torch.sum(curr_scores_ls, dim=0))
                                 # curr_scores = torch.max(torch.max(curr_scores_ls, dim=0))
                                 full_curr_scores_ls.append(curr_scores.item())
                             elif self.algebra_method == two:
@@ -347,7 +347,7 @@ class DenseRetrievalExactSearch:
                                     curr_scores_ls[curr_scores_ls < 0] = 0
                                     curr_scores = torch.prod(curr_scores_ls)
                                 else:
-                                    curr_scores = torch.mean(curr_scores_ls)
+                                    curr_scores = torch.sum(curr_scores_ls)
                                 # curr_scores = torch.sum(curr_scores_ls)
                                 # curr_scores = torch.sum(curr_scores_ls)
                                 full_curr_scores_ls.append(curr_scores.item())
@@ -372,11 +372,14 @@ class DenseRetrievalExactSearch:
                 corpus_idx += 1
         
             all_cos_scores_tensor = torch.stack(all_cos_scores, dim=-1)
+            if dataset_name == "webis-touche2020":
+                torch.save(all_cos_scores_tensor,"/data2/wuyinjun/output/all_cos_scores_tensor.pkl")
             if sparse_sim_scores is not None:
                 all_cos_scores_tensor = torch.cat([all_cos_scores_tensor, sparse_sim_scores.to(device).unsqueeze(1)], dim=1)
             all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
             # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
             if self.prob_agg == "prod":
+                
                 all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
             else:
                 if dataset_name == "trec-covid":
