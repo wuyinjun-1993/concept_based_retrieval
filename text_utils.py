@@ -177,7 +177,7 @@ def construct_dense_or_sparse_encodings(args, corpus, text_model, samples_hash, 
 
 
 
-def convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_count_ls = [32], is_sparse=False):
+def convert_samples_to_concepts_txt(args, text_model, corpus, device, raptor_model=None, patch_count_ls = [32], is_sparse=False):
     cl = ConceptLearner_text(corpus, text_model, args.dataset_name, device=device)
     
     sentences = text_model.convert_corpus_to_ls(corpus)
@@ -223,16 +223,39 @@ def convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_coun
     if args.img_concept:
         patch_activation_ls=[]
         full_bbox_ls = []
-        for idx in range(len(patch_count_ls)):
-            patch_count = patch_count_ls[idx]
-            patch_activations, bbox_ls = cl.get_patches(args.model_name, samples_hash, method="slic", patch_count=patch_count)
-            # cos_sim_ls = []
-            # for sub_idx in range(len(patch_activations)):
-            #     cos_sim = torch.nn.functional.cosine_similarity(img_emb[sub_idx].view(1,-1), patch_activations[sub_idx].view(1,-1)).item()
-            #     cos_sim_ls.append(cos_sim)
-            # print()
-            patch_activation_ls.append(patch_activations)
-            full_bbox_ls.append(bbox_ls)
+        if raptor_model != None:
+                print("Raptor Image Concepts")
+                cached_file_name=f"output/saved_patches_raptor_1_{samples_hash}.pkl"
+            
+                if os.path.exists(cached_file_name):
+                    print("Loading cached patches")
+                    print(samples_hash)
+                    patch_activations, bbox_ls = utils.load(cached_file_name)
+                else:
+                    patch_activations = []
+                    bbox_ls = []
+                    for doc in corpus:
+                        whole_doc = doc['title'] + " " + doc['text']
+                        tree = raptor_model.RA.add_documents(whole_doc)
+                        doc_patch_activations, doc_bbox_ls = raptor_model.process_tree(tree)
+                        patch_activations.append(doc_patch_activations)
+                        bbox_ls.append(doc_bbox_ls)
+                    utils.save((patch_activations, bbox_ls), cached_file_name)
+                    
+                patch_activation_ls.append(patch_activations)
+                full_bbox_ls.append(bbox_ls)
+        else:
+            for idx in range(len(patch_count_ls)):
+                patch_count = patch_count_ls[idx]
+                
+                patch_activations, bbox_ls = cl.get_patches(args.model_name, samples_hash, method="slic", patch_count=patch_count)
+                # cos_sim_ls = []
+                # for sub_idx in range(len(patch_activations)):
+                #     cos_sim = torch.nn.functional.cosine_similarity(img_emb[sub_idx].view(1,-1), patch_activations[sub_idx].view(1,-1)).item()
+                #     cos_sim_ls.append(cos_sim)
+                # print()
+                patch_activation_ls.append(patch_activations)
+                full_bbox_ls.append(bbox_ls)
         
         return samples_hash, (img_emb,img_sparse_emb), patch_activation_ls, full_bbox_ls
     else:
