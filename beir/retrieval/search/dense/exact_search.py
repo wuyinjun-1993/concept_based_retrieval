@@ -115,6 +115,10 @@ class DenseRetrievalExactSearch:
             curr_sub_corpus_embeddings = sub_corpus_embeddings[0:-1]
         else:
             curr_sub_corpus_embeddings = sub_corpus_embeddings
+        
+        if len(curr_sub_corpus_embeddings) <= 0:
+            return torch.tensor([0], device=device)
+            
         for curr_grouped_sub_q_ids in curr_grouped_sub_q_ids_ls:
             
             selected_embedding_idx = torch.arange(curr_sub_corpus_embeddings.shape[0])
@@ -386,7 +390,10 @@ class DenseRetrievalExactSearch:
                                 curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
                             elif self.algebra_method == two:
                                 if self.is_img_retrieval:
-                                    curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
+                                    if len(sub_corpus_embeddings) <= 1:
+                                        curr_scores_ls = torch.tensor([0], device= device)
+                                    else:
+                                        curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
                                 else:
                                     curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
                                 
