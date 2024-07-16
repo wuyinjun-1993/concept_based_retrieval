@@ -30,6 +30,7 @@ import random
 from dessert_minheap_torch import *
 import pynvml
 from LLM4split.prompt_utils import *
+from raptor.raptor_embeddings import *
 
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco", "mscoco_40k"]
@@ -172,6 +173,7 @@ def parse_args():
     parser.add_argument("--is_test", action="store_true", help="config file")
     parser.add_argument("--store_res", action="store_true", help="config file")
     parser.add_argument("--use_phi", action="store_true", help="config file")
+    parser.add_argument('--use_raptor', action="store_true", help='config file')
     
     args = parser.parse_args()
     return args
@@ -302,11 +304,11 @@ if __name__ == "__main__":
         # text_model = models.clip_model(text_processor, model, device)
         if args.model_name == "default":
             print("start loading distill-bert model")
-            if not os.path.exists("output/msmarco-distilbert-base-tas-b.pkl"):
+            if True: #not os.path.exists("output/msmarco-distilbert-base-tas-b.pkl"):
                 text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b", prefix = sparse_prefix, suffix=sparse_suffix)
                 utils.save(text_model, "output/msmarco-distilbert-base-tas-b.pkl")
-            else:
-                text_model = utils.load("output/msmarco-distilbert-base-tas-b.pkl")
+            # else:
+            #     text_model = utils.load("output/msmarco-distilbert-base-tas-b.pkl")
         # elif args.model_name == "phi":
         #     text_model = models.ms_phi(prefix=sparse_prefix, suffix=sparse_suffix)
         elif args.model_name == "llm":
@@ -607,7 +609,12 @@ if __name__ == "__main__":
             store_sparse_index(samples_hash, img_sparse_emb, encoding_query = False)
 
     elif args.dataset_name in text_retrieval_datasets:
-        samples_hash,(img_emb, img_sparse_index), patch_emb_ls, bboxes_ls = convert_samples_to_concepts_txt(args, text_model, corpus, device, patch_count_ls=patch_count_ls)
+        
+        if (args.use_raptor):
+            raptor_model = RaptorEmbeddingGenerator()
+        else:
+            raptor_model = None
+        samples_hash,(img_emb, img_sparse_index), patch_emb_ls, bboxes_ls = convert_samples_to_concepts_txt(args, text_model, corpus, device, raptor_model=raptor_model, patch_count_ls=patch_count_ls)
         
         # img_emb = text_model.encode_corpus(corpus)
         # if args.img_concept:
@@ -640,7 +647,7 @@ if __name__ == "__main__":
                 patch_emb_by_img_ls = torch.nn.functional.normalize(patch_emb_by_img_ls, p=2, dim=1)
     
             
-            patch_clustering_info_cached_file = get_dessert_clustering_res_file_name(samples_hash, patch_count_ls, clustering_number=args.clustering_number, index_method=args.index_method, typical_doclen=args.clustering_doc_count_factor, num_tables=args.num_tables, hashes_per_table=args.hashes_per_table)
+            patch_clustering_info_cached_file = get_dessert_clustering_res_file_name(args, samples_hash, patch_count_ls, clustering_number=args.clustering_number, index_method=args.index_method, typical_doclen=args.clustering_doc_count_factor, num_tables=args.num_tables, hashes_per_table=args.hashes_per_table)
             
             if not os.path.exists(patch_clustering_info_cached_file):
             

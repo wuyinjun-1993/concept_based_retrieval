@@ -61,10 +61,16 @@ def compute_faiss_kmeans(dim, num_partitions, kmeans_niters, sample_embeddings):
     sample_embeddings = sample_embeddings/ torch.norm(sample_embeddings, dim=-1, keepdim=True)
     use_gpu = torch.cuda.is_available()
     print("is gpu available::", use_gpu)
-    kmeans = faiss.Kmeans(dim, num_partitions, niter=kmeans_niters, gpu=use_gpu, verbose=True, seed=123)
-    # kmeans = faiss.Kmeans(dim, num_partitions, gpu=use_gpu, verbose=True, seed=123)
     sample = sample_embeddings.float().numpy()
-    kmeans.train(sample)
+    try:
+        kmeans = faiss.Kmeans(dim, num_partitions, niter=kmeans_niters, gpu=use_gpu, verbose=True, seed=123)
+        # kmeans = faiss.Kmeans(dim, num_partitions, gpu=use_gpu, verbose=True, seed=123)
+    
+        kmeans.train(sample)
+    except:
+        print("start using cpus for faiss")
+        kmeans = faiss.Kmeans(dim, num_partitions, niter=kmeans_niters, gpu=False, verbose=True, seed=123)
+        kmeans.train(sample)
     centroids = torch.from_numpy(kmeans.centroids)
     centroids = centroids/torch.norm(centroids, dim=-1, keepdim=True)
     # if use_gpu:
@@ -261,24 +267,39 @@ def get_patch_count_str(patch_count_ls):
 def get_clustering_res_file_name(args, hashes, patch_count_ls):
     patch_count_ls = sorted(patch_count_ls)
     patch_count_str = get_patch_count_str(patch_count_ls)
+    extra_suffix=""
+    if args.model_name == "llm":
+        extra_suffix += "_llm"
+        
+    if args.use_raptor:
+        extra_suffix += "_raptor"
+    
+    
     if args.clustering_doc_count_factor == 1:
-        centroid_ls_file_name=f"output/centroid_ls_{hashes}_{patch_count_str}_{args.clustering_number}.pt"
+        centroid_ls_file_name=f"output/centroid_ls_{hashes}_{patch_count_str}_{args.clustering_number}{extra_suffix}.pt"
     else:
-        centroid_ls_file_name=f"output/centroid_ls_{hashes}_{patch_count_str}_{args.clustering_number}_doclen_{args.clustering_doc_count_factor}.pt"
+        centroid_ls_file_name=f"output/centroid_ls_{hashes}_{patch_count_str}_{args.clustering_number}{extra_suffix}_doclen_{args.clustering_doc_count_factor}.pt"
     
     # patch_clustering_info_cached_file =  f"output/saved_patches_{args.dataset_name}_{patch_count_str}.pkl"
     return centroid_ls_file_name
 
 
-def get_dessert_clustering_res_file_name(hashes, patch_count_ls,clustering_number=1000, index_method="default", typical_doclen=1,num_tables=100, hashes_per_table=5):
+def get_dessert_clustering_res_file_name(args, hashes, patch_count_ls,clustering_number=1000, index_method="default", typical_doclen=1,num_tables=100, hashes_per_table=5):
     patch_count_str = get_patch_count_str(patch_count_ls)
+    
+    extra_suffix=""
+    if args.use_raptor:
+        extra_suffix += "_raptor"
+    if args.model_name=="llm":
+        extra_suffix += "_llm"
+    
     if index_method == "default":
         if typical_doclen == 1:
-            patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_number}.pkl"
+            patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_number}{extra_suffix}.pkl"
         else:
-            patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_number}_doclen_{typical_doclen}.pkl"
+            patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_number}_doclen_{typical_doclen}{extra_suffix}.pkl"
     else:
-        patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_number}_doclen_{typical_doclen}_num_table_{num_tables}_hashes_per_table_{hashes_per_table}.pkl"
+        patch_clustering_info_cached_file =  f"output/dessert_clustering_res_{hashes}_{patch_count_str}_{index_method}_{clustering_number}_doclen_{typical_doclen}{extra_suffix}_num_table_{num_tables}_hashes_per_table_{hashes_per_table}.pkl"
     return patch_clustering_info_cached_file
 
 # 0.12 for trec covid 10000

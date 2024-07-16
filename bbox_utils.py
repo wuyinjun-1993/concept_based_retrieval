@@ -117,9 +117,14 @@ def init_bbox_nbs(args, patch_count_ls, samples_hash, bboxes_ls, patch_emb_by_im
     # patch_count_ls = sorted(patch_count_ls)
     patch_count_str = "_".join([str(item) for item in patch_count_ls])
     
-    bboxes_overlap_file_name = "output/bboxes_overlap_" + samples_hash + "_" + patch_count_str + ".pkl"   
+    extra_suffix=""
+            
+    if args.use_raptor:
+        extra_suffix += "_raptor"
     
-    if os.path.exists(bboxes_overlap_file_name):
+    bboxes_overlap_file_name = "output/bboxes_overlap_" + samples_hash + "_" + patch_count_str + extra_suffix + ".pkl"   
+    
+    if False: #os.path.exists(bboxes_overlap_file_name):
         print("load bbox neighbor information from file: ", bboxes_overlap_file_name)
         bboxes_overlap_ls, clustering_nbs_mappings = utils.load(bboxes_overlap_file_name)
     else:
