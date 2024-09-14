@@ -12,11 +12,12 @@ import re
 from vector_dataset import Partitioned_vector_dataset, collate_fn
 import time
 import numpy as np
+# openai.api_key = os.getenv("OPENAI_API_KEY")
+import pandas as pd
+
 from scipy.stats import percentileofscore
 from collections import defaultdict
 
-# openai.api_key = os.getenv("OPENAI_API_KEY")
-import pandas as pd
 def obtain_key_words(query):
     client = OpenAI(
         # This is the default and can be omitted
@@ -184,49 +185,6 @@ def retrieve_with_dessert(all_sub_corpus_embedding_ls, query_embeddings, doc_ret
     return results
 
 
-# def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, clustering_topk=500, batch_size=16,in_disk=False,doc_retrieval=None,use_clustering=False,prob_agg="prod",method="two",_nprobe_query=2, index_method="default",dataset_name="", **kwargs):
-#     print("results with decomposition::")
-#     # if parallel:
-#     #     all_sub_corpus_embedding_dataset= Partitioned_vector_dataset(all_sub_corpus_embedding_ls)
-#     #     all_sub_corpus_embedding_loader = torch.utils.data.DataLoader(all_sub_corpus_embedding_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
-    
-#     #     results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_loader, query_count=query_count, parallel=parallel)
-#     # else:
-#     if type(all_sub_corpus_embedding_ls) is list:
-#         all_sub_corpus_embedding_ls = [torch.nn.functional.normalize(all_sub_corpus_embedding, p=2, dim=-1) for all_sub_corpus_embedding in all_sub_corpus_embedding_ls]
-#     else:
-#         all_sub_corpus_embedding_ls = torch.nn.functional.normalize(all_sub_corpus_embedding_ls, p=2, dim=-1)
-    
-    
-#     t1 = time.time()
-#     if type(query_embeddings[0]) is list:
-#         query_embeddings = [[torch.nn.functional.normalize(query_embedding, p=2, dim=-1) for query_embedding in local_query_embedding] for local_query_embedding in query_embeddings]
-#     else:
-#         query_embeddings = [torch.nn.functional.normalize(query_embedding, p=2, dim=-1) for query_embedding in query_embeddings]
-    
-#     kwargs["dataset_name"] = dataset_name
-#     if not use_clustering:
-        
-#         # results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk)
-#         results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk, **kwargs)
-#     else:
-#         if not index_method == "dessert":
-#             kwargs['index_method'] = index_method
-#             doc_retrieval._nprobe_query = _nprobe_query #max(2, int(clustering_topk/20))
-#             results = doc_retrieval.query_multi_queries(all_sub_corpus_embedding_ls, query_embeddings, top_k=min(clustering_topk,len(all_sub_corpus_embedding_ls)), num_to_rerank=min(clustering_topk,len(all_sub_corpus_embedding_ls)), prob_agg=prob_agg,method=method, **kwargs)
-#         else:
-#             kwargs['clustering_topk'] = clustering_topk
-#             results = retrieve_with_dessert(all_sub_corpus_embedding_ls, query_embeddings, doc_retrieval, prob_agg, method, **kwargs)
-#         # results = {str(idx+1): results[idx] for idx in range(len(results))}
-#     t2 = time.time()
-    
-#     print(f"Time taken: {t2-t1:.2f}s")    
-#     ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values, ignore_identical_ids=False)
-#     return results
-#     # print("start evaluating performance for single query with decomposition")
-#     # return evaluate_for_query_batches(retriever, qrels, results)
-
-
 def retrieve_by_embeddings(queries, retriever, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, clustering_topk=500, batch_size=16,in_disk=False,doc_retrieval=None,use_clustering=False,prob_agg="prod",method="two",_nprobe_query=2, index_method="default",dataset_name="", **kwargs):
     print("results with decomposition::")
     # if parallel:
@@ -301,6 +259,8 @@ def retrieve_by_embeddings(queries, retriever, all_sub_corpus_embedding_ls, quer
     print("Overall scores:")
     ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values, ignore_identical_ids=False)
     return results
+    # print("start evaluating performance for single query with decomposition")
+    # return evaluate_for_query_batches(retriever, qrels, results)
 
 
 def decompose_queries_by_keyword(dataset_name, queries, out_dir="out/"):
