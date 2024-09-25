@@ -327,10 +327,11 @@ def retrieve_by_embeddings(perc_method, full_sub_queries_ls, queries, retriever,
     
     
     t1 = time.time()
-    if type(query_embeddings[0]) is list:
-        query_embeddings = [[torch.nn.functional.normalize(query_embedding, p=2, dim=-1) for query_embedding in local_query_embedding] for local_query_embedding in query_embeddings]
-    else:
-        query_embeddings = [torch.nn.functional.normalize(query_embedding, p=2, dim=-1) for query_embedding in query_embeddings]
+    if not method == "five":
+        if type(query_embeddings[0]) is list:
+            query_embeddings = [[torch.nn.functional.normalize(query_embedding, p=2, dim=-1) for query_embedding in local_query_embedding] for local_query_embedding in query_embeddings]
+        else:
+            query_embeddings = [torch.nn.functional.normalize(query_embedding, p=2, dim=-1) for query_embedding in query_embeddings]
     
     kwargs["dataset_name"] = dataset_name
     if not use_clustering:

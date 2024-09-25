@@ -1,6 +1,62 @@
 import utils
 from tqdm import tqdm
 import os
+
+
+def calculate_iou(bbox1, bbox2):
+    #print(bbox1)
+    #print(bbox2)
+    left1, upper1, right1, lower1 = bbox1
+    left2, upper2, right2, lower2 = bbox2
+
+    # Determine the coordinates of the intersection rectangle
+    inter_left = max(left1, left2)
+    inter_upper = max(upper1, upper2)
+    inter_right = min(right1, right2)
+    inter_lower = min(lower1, lower2)
+
+    # Compute the area of intersection
+    inter_width = max(0, inter_right - inter_left)
+    inter_height = max(0, inter_lower - inter_upper)
+    intersection_area = inter_width * inter_height
+
+    # Compute the area of both bounding boxes
+    area_bbox1 = (right1 - left1) * (lower1 - upper1)
+    area_bbox2 = (right2 - left2) * (lower2 - upper2)
+
+    # Determine which patch is smaller
+    smaller_patch_area = min(area_bbox1, area_bbox2)
+
+    # Compute the containment as the intersection area over the smaller patch area
+    containment = intersection_area / smaller_patch_area if smaller_patch_area > 0 else 0
+    return containment
+
+def generate_containment_list(intersect_ratio, all_valid_bboxes_list):
+  all_containment_list = []
+  for box_list in all_valid_bboxes_list:
+    containment_list = [[] for _ in range(len(box_list))]
+
+    # Check for overlap (IoU > 50%) between valid bounding boxes
+    for i, bbox1 in enumerate(box_list):
+      for j, bbox2 in enumerate(box_list):
+          if i != j:
+              iou = calculate_iou(bbox1, bbox2)
+              if iou > intersect_ratio:
+                containment_list[i].append(j)
+    all_containment_list.append(containment_list)
+  return all_containment_list
+
+def generate_all_containment_list(all_bboxes_ls):
+    
+    all_containment_ls = []
+    
+    for bboxes_ls in all_bboxes_ls:
+        all_valid_bboxes_list_11 = []
+        all_valid_bboxes_list_11.append(bboxes_ls)
+        containment_list = generate_containment_list(0.9, all_valid_bboxes_list_11)[0]
+        all_containment_ls.append(containment_list)
+    return all_containment_ls
+
 def is_bbox_overlapped(bbox1, bbox2):
     x1_1, y1_1, x2_1, y2_1 = bbox1
     x1_2, y1_2, x2_2, y2_2 = bbox2

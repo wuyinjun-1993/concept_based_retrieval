@@ -31,7 +31,7 @@ from dessert_minheap_torch import *
 import pynvml
 from LLM4split.prompt_utils import *
 from raptor.raptor_embeddings import *
-
+from agg_query_processing import *
 
 image_retrieval_datasets = ["flickr", "AToMiC", "crepe", "crepe_full", "mscoco", "mscoco_40k"]
 text_retrieval_datasets = ["trec-covid", "nq", "climate-fever", "hotpotqa", "msmarco", "webis-touche2020", "scifact", "fiqa"]
@@ -96,6 +96,24 @@ def embed_queries_ls(model_name, full_sub_queries_ls, processor, model, device):
             text_emb_ls.append(sub_text_emb_ls)
     return text_emb_ls
 
+
+def embed_query_trees(model_name, full_sub_query_trees_ls, processor, model, device):
+    text_emb_ls = []
+    with torch.no_grad():
+        # for filename, caption in tqdm(filename_cap_mappings.items()):
+        # for file_name in filename_ls:
+        for sub_query_trees_ls in tqdm(full_sub_query_trees_ls):
+            # sub_text_emb_ls = []
+            for sub_query_tree in sub_query_trees_ls:
+                # sub_text_feature_ls = []
+                # for subquery_tree in sub_query_trees:
+                    # caption = filename_cap_mappings[file_name]
+                sub_query_tree.embed_sub_queries(model, model_name, processor, device)
+    #                 sub_text_feature_ls.append(text_features.cpu())
+    #             # text_features = outputs.last_hidden_state[:, 0, :]
+    #             sub_text_emb_ls.append(sub_text_feature_ls)
+    #         text_emb_ls.append(sub_text_emb_ls)
+    # return text_emb_ls
         
 def retrieve_by_full_query(img_emb, text_emb_ls):
     text_emb_tensor = torch.cat(text_emb_ls).cpu()
@@ -355,7 +373,7 @@ if __name__ == "__main__":
     # , bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls
     
     if args.dataset_name == "flickr":
-        queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls = load_flickr_dataset_full(full_data_path, full_data_path, subset_img_id=args.subset_img_id)
+        queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls = load_flickr_dataset_full(full_data_path, full_data_path, subset_img_id=args.subset_img_id, algebra_method=args.algebra_method)
         
         img_idx_ls, img_file_name_ls = load_other_flickr_images(full_data_path, query_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
         
@@ -719,9 +737,13 @@ if __name__ == "__main__":
         # else:
         #     cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_sample_ids_ls = clustering_img_embeddings(img_emb)
     
+    all_containment_ls = None
     if args.img_concept:
         bboxes_overlap_ls, clustering_nbs_mappings = init_bbox_nbs(args, patch_count_ls, samples_hash, bboxes_ls, patch_emb_by_img_ls, sample_patch_ids_to_cluster_id_mappings)
-    
+        if args.algebra_method == "five":
+            all_containment_ls = generate_all_containment_list(bboxes_ls)
+        
+        
     # if bboxes_overlap_ls is not None:
     #     bboxes_overlap_ls = [[set(bboxes) for bboxes in bboxes_overlap] for bboxes_overlap in bboxes_overlap_ls]
         # else:
@@ -756,9 +778,15 @@ if __name__ == "__main__":
             # else:
                 # sub_queries_ls = decompose_queries_by_clauses(queries)
             # full_sub_queries_ls = sub_queries_ls
-            full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
+            if args.dataset_name == "flickr" and args.algebra_method == "five":
+                full_sub_queries_ls = [sub_queries_ls[idx] + [convert_origin_query_to_tree(queries[idx])] for idx in range(len(sub_queries_ls))]
+                embed_query_trees(args.model_name, full_sub_queries_ls, text_processor, model, device)
+                text_emb_ls = full_sub_queries_ls
+            else:
+                full_sub_queries_ls = [sub_queries_ls[idx] + [[queries[idx]]] for idx in range(len(sub_queries_ls))]
+                
                 # full_sub_queries_ls = [[sub_queries_ls[idx]] for idx in range(len(sub_queries_ls))]
-            text_emb_ls = embed_queries_ls(args.model_name, full_sub_queries_ls, text_processor, model, device)
+                text_emb_ls = embed_queries_ls(args.model_name, full_sub_queries_ls, text_processor, model, device)
             # text_emb_ls = embed_queries(filename_ls, filename_cap_mappings, text_processor, model, device)
         else:
             # if args.dataset_name == "flickr":
@@ -798,7 +826,9 @@ if __name__ == "__main__":
     
     if args.query_concept:
         if args.is_img_retrieval:
-            text_emb_ls = [[torch.cat(item) for item in items] for items in text_emb_ls]
+            if not args.algebra_method == "five":
+                text_emb_ls = [[torch.cat(item) for item in items] for items in text_emb_ls]
+    
     
     # if args.query_concept:
     perc_method = "one"
@@ -811,7 +841,7 @@ if __name__ == "__main__":
                     results=retrieve_by_embeddings(perc_method, full_sub_queries_ls, queries, retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name)
                 else:
                     # results=retrieve_by_embeddings0(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name)
-                    results=retrieve_by_embeddings(perc_method, full_sub_queries_ls, queries, retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name)
+                    results=retrieve_by_embeddings(perc_method, None, queries, retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name)
             else:
                 # results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
                 # results=retrieve_by_embeddings0(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, dataset_name=args.dataset_name)
@@ -822,12 +852,12 @@ if __name__ == "__main__":
                 
             if not args.search_by_cluster:
                 # results=retrieve_by_embeddings0(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name, is_img_retrieval=args.is_img_retrieval)
-                results=retrieve_by_embeddings(perc_method, full_sub_queries_ls, queries, retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name, is_img_retrieval=args.is_img_retrieval)
+                results=retrieve_by_embeddings(perc_method, full_sub_queries_ls, queries, retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name, is_img_retrieval=args.is_img_retrieval, all_containment_ls=all_containment_ls, method=args.algebra_method)
             else:
                 # results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
                 # grouped_sub_q_ids_ls, bboxes_overlap_ls, dependency_topk, device, prob_agg, is_img_retrieval
                 # results=retrieve_by_embeddings0(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, clustering_topk=args.clustering_topk, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk, device=device, is_img_retrieval=args.is_img_retrieval, method=args.algebra_method, index_method=args.index_method, _nprobe_query=args.nprobe_query, dataset_name=args.dataset_name)
-                results=retrieve_by_embeddings(perc_method, full_sub_queries_ls, queries, retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, clustering_topk=args.clustering_topk, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk, device=device, is_img_retrieval=args.is_img_retrieval, method=args.algebra_method, index_method=args.index_method, _nprobe_query=args.nprobe_query, dataset_name=args.dataset_name)
+                results=retrieve_by_embeddings(perc_method, full_sub_queries_ls, queries, retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, clustering_topk=args.clustering_topk, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk, device=device, is_img_retrieval=args.is_img_retrieval, method=args.algebra_method, index_method=args.index_method, _nprobe_query=args.nprobe_query, dataset_name=args.dataset_name, all_containment_ls=all_containment_ls)
     # elif args.retrieval_method == "llm_ranker":
     #     ranker = LLM_ranker(corpus)
     #     results = ranker.retrieval(queries)

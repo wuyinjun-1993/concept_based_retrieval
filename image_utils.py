@@ -33,6 +33,8 @@ import requests
 from PIL import Image
 from io import BytesIO
 from transformers import AutoTokenizer, BitsAndBytesConfig
+
+from agg_query_processing import Tree, TreeNode
 # from llava.model import LlavaLlamaForCausalLM
 # import torch
 # from llava.conversation import conv_templates, SeparatorStyle
@@ -314,101 +316,204 @@ def load_flickr_dataset(data_path, query_path, subset_img_id=None, redecompose=F
 
     # return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
 
-def load_flickr_dataset_full(data_path, query_path, subset_img_id=None, redecompose=False, total_count = 1000):
+def load_flickr_dataset_full(data_path, query_path, subset_img_id=None, redecompose=False, total_count = 1000, algebra_method="five"):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
     # img_caption_file_name= os.path.join(query_path, "sub_queries.csv")
-    if total_count < 0:
-        img_caption_file_name= os.path.join(query_path, "full_queries.csv")
+    
+    # selected_query_file = os.path.join(data_path, "flickr_500_choose.csv")   
+    df = pd.read_csv(os.path.join(data_path, 'flickr_annotations_30k.csv'))
+    
+    # selected_filename = "1000092795.jpg"
+    # selected_filename = "10002456.jpg"
+    selected_filename = "125272627.jpg"
+    
+    selected_img_idx = df[df['filename'] == selected_filename].index[0]
+    
+    # full_query = "Five ballet dancers caught mid jump in a dancing studio with sunlight coming through a window"
+    full_query = "Several women are gather around a table in a corner surrounded by bookshelves."
+    # selected_img_idx = 11
+    
+    
+    image_path_11 = os.path.join(data_path, "flickr30k-images/") + df.iloc[selected_img_idx]['filename']
+    
+    if algebra_method == "five":
+    
+        root = TreeNode(0, full_query, 'root', 1)
+        child1 = TreeNode(1, 'a table in a corner', 'plain', 1)
+        child2 = TreeNode(2, 'a corner surrounded by bookshelves', 'plain', 1)
+        child3 = TreeNode(3, 'One woman is gathered around a table', 'count', 2)
+        child4 = TreeNode(4, 'One woman is gathered around a table', 'plain', 1)
+        tree_11 = Tree(root)
+        tree_11.add_child(root, child1)
+        tree_11.add_child(root, child2)
+        tree_11.add_child(root, child3)
+        tree_11.add_child(child3, child4)
+    
+    
+    
+        # root = TreeNode(0, 'Several men in hard hats are operating a giant pulley system.', 'root', 1)
+        # child1 = TreeNode(1, 'One man in hard hats are operating a giant pulley system.', 'count', 2)
+        # child2 = TreeNode(2, 'One man in hard hats', 'plain', 1)
+        # child3 = TreeNode(3, 'a man is operating a giant pulley system', 'plain', 1)
+        # # child4 = TreeNode(4, 'One young guy hanging out in the yard', 'plain', 1)
+        # tree_11 = Tree(root)
+        # tree_11.add_child(root, child1)
+        # tree_11.add_child(child1, child2)
+        # tree_11.add_child(child1, child3)
+        # tree_11.add_child(child1, child4)
+        
+        
+        
+        
+        
+        # root = TreeNode(0, 'Two young guys with shaggy hair look at their hands while hanging out in the yard.', 'root', 1)
+        # child1 = TreeNode(1, 'One young guys with shaggy hair look at their hands while hanging out in the yard.', 'count', 2)
+        # child2 = TreeNode(2, 'One young guys with shaggy hair', 'plain', 1)
+        # child3 = TreeNode(3, 'One young guy looks at his hands', 'plain', 1)
+        # child4 = TreeNode(4, 'One young guy hanging out in the yard', 'plain', 1)
+        # tree_11 = Tree(root)
+        # tree_11.add_child(root, child1)
+        # tree_11.add_child(child1, child2)
+        # tree_11.add_child(child1, child3)
+        # tree_11.add_child(child1, child4)
+        
+        # tree_11.add_child(child1, child5)
+        # tree_11.add_child(child1, child6)
+        
+        # root = TreeNode(0, 'Three young men and a young woman wearing sneakers are leaping in midair at the top of a flight of concrete stairs.', 'root', 1)
+        # child1 = TreeNode(1, 'Three young men wearing sneakers are leaping in midair at the top of a flight of concrete stairs.', 'count', 3)
+        # child2 = TreeNode(2, 'A young woman wearing sneakers.', 'plain', 1)
+        # child3 = TreeNode(3, 'A young woman leaping in midair at the top of a flight of concrete stairs.', 'plain', 1)
+        # # child4 = TreeNode(4, 'A flight of concrete stairs.', 'plain', 1)
+        # child5 = TreeNode(5, 'A young man wearing sneakers.', 'plain', 1)
+        # child6 = TreeNode(6, 'A young man leaping in midair at the top of a flight of concrete stairs.', 'plain', 1)
+        # tree_11 = Tree(root)
+        # tree_11.add_child(root, child1)
+        # tree_11.add_child(root, child3)
+        # tree_11.add_child(root, child2)
+        # # tree_11.add_child(root, child4)
+        # tree_11.add_child(child1, child5)
+        # tree_11.add_child(child1, child6)
+        
+        
+        
+        # Display the tree
+        tree_11.display(tree_11.root)
+        sub_caption_ls = [[tree_11]]
+        all_grouped_sub_q_ids_ls = [None]
     else:
-        img_caption_file_name= os.path.join(query_path, "full_queries_" + str(total_count) + ".csv")
-    is_full_query_file = True
-    if not os.path.exists(img_caption_file_name):
-        is_full_query_file = False
-        img_caption_file_name= os.path.join(query_path, "results_20130124.token")
-        caption_pd = pd.read_csv(img_caption_file_name, sep="\t")
-    else:
-        caption_pd = pd.read_csv(img_caption_file_name)
+        # sub_caption_ls = [['A young woman wearing sneakers.', 'A young woman leaping in midair at the top of a flight of concrete stairs.', 'Three young men wearing sneakers.', 'Three young men leaping in midair at the top of a flight of concrete stairs.']]
+        # sub_caption_ls = [['Two young guys with shaggy hair', 'Two young guy looks at his hands', 'Two young guy hanging out in the yard']]
+        sub_caption_ls = [["Several women are gather around a table","a table in a corner","a corner surrounded by bookshelves"]]
+        # all_grouped_sub_q_ids_ls = [[[0,1], [2,3]]]
+        all_grouped_sub_q_ids_ls = [None]
+    
+    # caption_ls = ["Two young guys with shaggy hair look at their hands while hanging out in the yard."]
+    caption_ls = [full_query]
+    
+    img_file_name_ls = [image_path_11]
+    
+    # img_idx_ls = [df.iloc[11]['filename']]
+    img_idx_ls = [selected_img_idx]
+    
+    return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
+    
+    
+    
+    
+    
+    # if total_count < 0:
+    #     img_caption_file_name= os.path.join(query_path, "full_queries.csv")
+    # else:
+    #     img_caption_file_name= os.path.join(query_path, "full_queries_" + str(total_count) + ".csv")
+    # is_full_query_file = True
+    # if not os.path.exists(img_caption_file_name):
+    #     is_full_query_file = False
+    #     img_caption_file_name= os.path.join(query_path, "results_20130124.token")
+    #     caption_pd = pd.read_csv(img_caption_file_name, sep="\t")
+    # else:
+    #     caption_pd = pd.read_csv(img_caption_file_name)
 
 
 
-    img_folder = os.path.join(data_path, "flickr30k-images/")
-    # img_folder2 = os.path.join(data_path, "VG_100K_2/")
+    # img_folder = os.path.join(data_path, "flickr30k-images/")
+    # # img_folder2 = os.path.join(data_path, "VG_100K_2/")
 
-    if not is_full_query_file:
-        header_names = ["image_id", "caption"]
-    else:
-        # if len(caption_pd.columns) == 3:
-        header_names = ["image_id", "caption", "caption_triples_ls", "groups"]
+    # if not is_full_query_file:
+    #     header_names = ["image_id", "caption"]
+    # else:
+    #     # if len(caption_pd.columns) == 3:
+    #     header_names = ["image_id", "caption", "caption_triples_ls", "groups"]
             
-    caption_pd.columns = header_names[0:len(caption_pd.columns)]
+    # caption_pd.columns = header_names[0:len(caption_pd.columns)]
     
     
-    # img_ls = []
-    img_idx_ls = []
-    caption_ls = []
-    sub_caption_ls = []
-    img_file_name_ls = []
-    all_grouped_sub_q_ids_ls = []
+    # # img_ls = []
+    # img_idx_ls = []
+    # caption_ls = []
+    # sub_caption_ls = []
+    # img_file_name_ls = []
+    # all_grouped_sub_q_ids_ls = []
     
-    if 'caption_triples_ls' not in caption_pd.columns:
-        caption_pd['caption_triples_ls'] = np.nan
-    if "groups" not in caption_pd.columns:
-        caption_pd['groups'] = np.nan 
+    # if 'caption_triples_ls' not in caption_pd.columns:
+    #     caption_pd['caption_triples_ls'] = np.nan
+    # if "groups" not in caption_pd.columns:
+    #     caption_pd['groups'] = np.nan 
 
-    for idx in tqdm(range(len(caption_pd))):
-        image_idx = caption_pd.iloc[idx]['image_id']
-        image_idx = image_idx.split("#")[0]
-        if image_idx in img_idx_ls:
-            continue
+    # for idx in tqdm(range(len(caption_pd))):
+    #     image_idx = caption_pd.iloc[idx]['image_id']
+    #     image_idx = image_idx.split("#")[0]
+    #     if image_idx in img_idx_ls:
+    #         continue
         
-        full_img_file_name = os.path.join(img_folder, str(image_idx))
-        # if not os.path.exists(full_img_file_name):
-        #     full_img_file_name = os.path.join(img_folder2, str(image_idx) + ".jpg")
-        if not os.path.exists(full_img_file_name):
-            continue
-        img_file_name_ls.append(full_img_file_name)
+    #     full_img_file_name = os.path.join(img_folder, str(image_idx))
+    #     # if not os.path.exists(full_img_file_name):
+    #     #     full_img_file_name = os.path.join(img_folder2, str(image_idx) + ".jpg")
+    #     if not os.path.exists(full_img_file_name):
+    #         continue
+    #     img_file_name_ls.append(full_img_file_name)
         
-        # img = Image.open(full_img_file_name)
-        # img = img.convert('RGB')
-        caption = caption_pd.iloc[idx]['caption']
-        # sub_caption_str = caption_pd.iloc[idx]['caption_triples']
-        sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
-        # sub_captions = decompose_single_query(sub_caption_str)
+    #     # img = Image.open(full_img_file_name)
+    #     # img = img.convert('RGB')
+    #     caption = caption_pd.iloc[idx]['caption']
+    #     # sub_caption_str = caption_pd.iloc[idx]['caption_triples']
+    #     sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
+    #     # sub_captions = decompose_single_query(sub_caption_str)
         
         
-        if pd.isnull(caption_pd.iloc[idx]['caption_triples_ls']) or redecompose:
-            sub_caption_str=obtain_response_from_openai(dataset_name="flickr", query=caption)
-            sub_caption_str_ls = sub_caption_str.split("|")
-            segmented_sub_caption_str_ls = []
-            for sub_caption_str in sub_caption_str_ls:
-                segmented_sub_caption_str_ls.append(obtain_response_from_openai(dataset_name="flickr_two", query=sub_caption_str))
+    #     if pd.isnull(caption_pd.iloc[idx]['caption_triples_ls']) or redecompose:
+    #         sub_caption_str=obtain_response_from_openai(dataset_name="flickr", query=caption)
+    #         sub_caption_str_ls = sub_caption_str.split("|")
+    #         segmented_sub_caption_str_ls = []
+    #         for sub_caption_str in sub_caption_str_ls:
+    #             segmented_sub_caption_str_ls.append(obtain_response_from_openai(dataset_name="flickr_two", query=sub_caption_str))
             
-            sub_caption_str = "|".join(segmented_sub_caption_str_ls)
-            caption_pd.at[idx, "caption_triples_ls"] = sub_caption_str
-        else:
-            sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
+    #         sub_caption_str = "|".join(segmented_sub_caption_str_ls)
+    #         caption_pd.at[idx, "caption_triples_ls"] = sub_caption_str
+    #     else:
+    #         sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
         
-        sub_captions = decompose_single_query_ls(sub_caption_str)
+    #     sub_captions = decompose_single_query_ls(sub_caption_str)
         
-        query_paritions_str = caption_pd.iloc[idx]['groups']
-        grouped_sub_q_ids_ls = decompose_single_query_parition_groups(sub_captions, query_paritions_str)
-        print(sub_captions)
-        # img_ls.append(img)
-        img_idx_ls.append(image_idx)
-        caption_ls.append(caption)
-        sub_caption_ls.append(sub_captions)
-        all_grouped_sub_q_ids_ls.append(grouped_sub_q_ids_ls)
+    #     query_paritions_str = caption_pd.iloc[idx]['groups']
+    #     grouped_sub_q_ids_ls = decompose_single_query_parition_groups(sub_captions, query_paritions_str)
+    #     print(sub_captions)
+    #     # img_ls.append(img)
+    #     img_idx_ls.append(image_idx)
+    #     caption_ls.append(caption)
+    #     sub_caption_ls.append(sub_captions)
+    #     all_grouped_sub_q_ids_ls.append(grouped_sub_q_ids_ls)
         
-        if total_count > 0 and len(img_file_name_ls) >= total_count:
-            break
+    #     if total_count > 0 and len(img_file_name_ls) >= total_count:
+    #         break
 
-    caption_pd.to_csv(img_caption_file_name, index=False)
-    if subset_img_id is None:
-        return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
-    else:
-        print(sub_caption_ls[subset_img_id])
-        return [caption_ls[subset_img_id]], [img_file_name_ls[subset_img_id]], [sub_caption_ls[subset_img_id]], [img_idx_ls[subset_img_id]], [all_grouped_sub_q_ids_ls[subset_img_id]]
+    # caption_pd.to_csv(img_caption_file_name, index=False)
+    # if subset_img_id is None:
+    #     return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
+    # else:
+    #     print(sub_caption_ls[subset_img_id])
+    #     return [caption_ls[subset_img_id]], [img_file_name_ls[subset_img_id]], [sub_caption_ls[subset_img_id]], [img_idx_ls[subset_img_id]], [all_grouped_sub_q_ids_ls[subset_img_id]]
 
     # return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
 
@@ -830,22 +935,26 @@ def load_other_flickr_images(data_path, query_path, img_idx_ls, img_file_name_ls
     
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
     
-    filename_cap_mappings = read_flickr_image_captions(os.path.join(data_path, "results_20130124.token"))    
+    # filename_cap_mappings = read_flickr_image_captions(os.path.join(data_path, "results_20130124.token"))    
 
+    df = pd.read_csv(os.path.join(data_path, 'flickr_annotations_30k.csv'))
+    
     # img_folder = os.path.join(data_path, "VG_100K/")
-    img_folder = os.path.join(data_path, "flickr30k-images/")
+    # img_folder = os.path.join(data_path, "flickr30k-images/")
     # img_folder2 = os.path.join(data_path, "VG_100K_2/")
 
     # caption_pd = pd.read_csv(img_caption_file_name)
     if total_count > 0 and len(img_file_name_ls) >= total_count:
         return img_idx_ls, img_file_name_ls          
     # for idx in range(len(caption_pd)):
-    for image_idx in tqdm(filename_cap_mappings):
+    # for image_idx in tqdm(filename_cap_mappings):
+    for image_idx in tqdm(range(len(df))):
         # image_idx = caption_pd.iloc[idx]['image_id']
         if image_idx in img_idx_ls:
             continue
         
-        full_img_file_name = os.path.join(img_folder, str(image_idx))
+        # full_img_file_name = os.path.join(img_folder, str(image_idx))
+        full_img_file_name = os.path.join(data_path, "flickr30k-images/") + df.iloc[image_idx]['filename']
         if not os.path.exists(full_img_file_name):
             continue
         #     full_img_file_name = os.path.join(img_folder2, str(image_idx) + ".jpg")
