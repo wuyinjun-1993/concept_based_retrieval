@@ -34,6 +34,78 @@ def dot_scores(a: torch.Tensor, b: torch.Tensor):
     return torch.mm(a_norm, b_norm.transpose(0, 1)) #TODO: this keeps allocating GPU memory
     # return torch.mm(a, b.transpose(0, 1)) #TODO: this keeps allocating GPU memory
 # @profile
+
+def compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, prob_agg = "prod", is_img_retrieval=False, dependency_topk=50, valid_patch_ids=None):
+        if grouped_sub_q_ids_ls[query_itr] is not None:
+            curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_q_ls_idx]
+        else:
+            curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
+        # print("dependency topk::", dependency_topk)
+        if prob_agg == "prod":
+            curr_scores_ls= 1
+        else:
+            curr_scores_ls = 0
+        # curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
+        if is_img_retrieval:
+            curr_sub_corpus_embeddings = sub_corpus_embeddings[0:-1]
+        else:
+            curr_sub_corpus_embeddings = sub_corpus_embeddings
+        for curr_grouped_sub_q_ids in curr_grouped_sub_q_ids_ls:
+
+            selected_embedding_idx = torch.arange(curr_sub_corpus_embeddings.shape[0])
+            beam_search_topk=min(dependency_topk, curr_sub_corpus_embeddings.shape[0])
+            if prob_agg == "prod":
+                sub_curr_scores = torch.ones(1).to(device)
+            else:
+                sub_curr_scores = torch.zeros(1).to(device)
+            selected_patch_ids_ls = None
+            for sub_query_idx in range(len(curr_grouped_sub_q_ids)): #range(curr_query_embedding.shape[0]):
+                # print(curr_grouped_sub_q_ids, sub_query_idx)
+                if valid_patch_ids is not None:
+                    selected_embedding_idx = torch.tensor(list(set(selected_embedding_idx.tolist()).intersection(valid_patch_ids)))
+
+                curr_prod_mat = dot_scores(curr_query_embedding[curr_grouped_sub_q_ids[sub_query_idx]].to(device), curr_sub_corpus_embeddings[selected_embedding_idx].to(device)).view(-1,1)
+                if prob_agg == "prod":
+                    curr_prod_mat[curr_prod_mat < 0] = 0
+                    prod_mat = curr_prod_mat*sub_curr_scores.view(1,-1)
+                else:
+                    prod_mat = curr_prod_mat+sub_curr_scores.view(1,-1)
+
+                # beam_search_topk=max(20, int(torch.numel(prod_mat)*0.05) + 1)
+                # print("beam_search_topk::", beam_search_topk)
+                sub_curr_scores_ls, topk_ids = torch.topk(prod_mat.view(-1), k=min(beam_search_topk, torch.numel(prod_mat)), dim=-1)
+                topk_emb_ids = topk_ids // prod_mat.shape[1]
+
+                topk_emb_ids = selected_embedding_idx.to(device)[topk_emb_ids].tolist()
+                # topk_emb_ids = list(set(topk_emb_ids.tolist()))
+                if sub_query_idx == 0:
+                    selected_patch_ids_ls = [[emb_id] for emb_id in topk_emb_ids]
+                    # selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in topk_emb_ids])
+                else:
+                    selected_seq_ids = topk_ids%prod_mat.shape[1]
+                    curr_selected_patch_ids_ls = [selected_patch_ids_ls[selected_seq_ids[selected_seq_id_idx]]+ [topk_emb_ids[selected_seq_id_idx]] for selected_seq_id_idx in range(len(selected_seq_ids))]
+                    selected_patch_ids_ls = curr_selected_patch_ids_ls
+                    # curr_selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in topk_emb_ids])
+                    # selected_embedding_idx = torch.tensor(list(set(torch.cat([selected_embedding_idx, curr_selected_embedding_idx]).tolist())))
+                existing_topk_emb_ids = set()
+                for selected_patch_ids in selected_patch_ids_ls:
+                    existing_topk_emb_ids.update(selected_patch_ids)
+                # selected_embedding_idx = torch.cat([torch.tensor(bboxes_overlap_ls[corpus_idx][topk_id]).view(-1) for topk_id in existing_topk_emb_ids])
+                selected_embedding_idx = set()
+                for topk_id in existing_topk_emb_ids:
+                    selected_embedding_idx.update(bboxes_overlap_ls[corpus_idx][topk_id])
+                selected_embedding_idx = torch.tensor(list(selected_embedding_idx))
+                sub_curr_scores = sub_curr_scores_ls
+            if prob_agg == "prod":
+                sub_curr_scores[sub_curr_scores <= 0] = 0
+                curr_scores_ls *= torch.max(sub_curr_scores)
+                assert torch.all(curr_scores_ls >= 0).item()
+            else:
+                curr_scores_ls += torch.max(sub_curr_scores)
+
+        return curr_scores_ls
+
+
 def compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, prob_agg = "prod", is_img_retrieval=False, dependency_topk=50, valid_patch_ids=None):
         if grouped_sub_q_ids_ls[query_itr] is not None:
             curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_q_ls_idx]
@@ -470,11 +542,15 @@ class MaxFlashArray:
         # if self.algebra_method == one or self.algebra_method == three:
         #     curr_scores_ls = self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
         if algebra_method == "two":
-            curr_scores_ls = torch.max(dot_scores(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
+            if is_img_retrieval:
+                curr_scores_ls = torch.max(dot_scores(curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
+            else:
+                curr_scores_ls = torch.max(dot_scores(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
             
             # curr_scores_ls_max_id = torch.argmax(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
         else:
-            curr_scores_ls = compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
+            # curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, prob_agg = "prod", is_img_retrieval=False, dependency_topk=50, valid_patch_ids=None
+            curr_scores_ls = compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
                 # curr_scores_ls2 = torch.max(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
                 
         # else:    
@@ -503,7 +579,7 @@ class MaxFlashArray:
                 curr_scores_ls[curr_scores_ls < 0] = 0
                 curr_scores = torch.prod(curr_scores_ls)
             else:
-                curr_scores = torch.mean(curr_scores_ls)
+                curr_scores = torch.sum(curr_scores_ls)
             # curr_scores = torch.sum(curr_scores_ls)
             # curr_scores = torch.sum(curr_scores_ls)
         else:
@@ -675,9 +751,10 @@ class DocRetrieval:
         #     all_cos_scores.append(cos_scores)        
         # all_cos_scores_tensor = torch.stack(all_cos_scores)
 
-        all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
+        # 
         # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
         if prob_agg == "prod":
+            all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
             all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
         else:
             # if dataset_name == "trec-covid":

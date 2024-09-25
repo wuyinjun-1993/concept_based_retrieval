@@ -29,7 +29,6 @@ from derive_sub_query_dependencies import group_dependent_segments_seq_all
 import random
 from dessert_minheap_torch import *
 import pynvml
-from LLM4split.prompt_utils import *
 from raptor.raptor_embeddings import *
 
 
@@ -172,7 +171,7 @@ def parse_args():
     parser.add_argument('--cached_file_suffix', type=str, default="", help='config file')
     parser.add_argument("--is_test", action="store_true", help="config file")
     parser.add_argument("--store_res", action="store_true", help="config file")
-    parser.add_argument("--use_phi", action="store_true", help="config file")
+    
     parser.add_argument('--use_raptor', action="store_true", help='config file')
     
     args = parser.parse_args()
@@ -304,11 +303,11 @@ if __name__ == "__main__":
         # text_model = models.clip_model(text_processor, model, device)
         if args.model_name == "default":
             print("start loading distill-bert model")
-            if True: #not os.path.exists("output/msmarco-distilbert-base-tas-b.pkl"):
+            if not os.path.exists("output/msmarco-distilbert-base-tas-b.pkl"):
                 text_model = models.SentenceBERT("msmarco-distilbert-base-tas-b", prefix = sparse_prefix, suffix=sparse_suffix)
                 utils.save(text_model, "output/msmarco-distilbert-base-tas-b.pkl")
-            # else:
-            #     text_model = utils.load("output/msmarco-distilbert-base-tas-b.pkl")
+            else:
+                text_model = utils.load("output/msmarco-distilbert-base-tas-b.pkl")
         # elif args.model_name == "phi":
         #     text_model = models.ms_phi(prefix=sparse_prefix, suffix=sparse_suffix)
         elif args.model_name == "llm":
@@ -341,10 +340,6 @@ if __name__ == "__main__":
     if not os.path.exists(full_data_path):
         os.makedirs(full_data_path)
     
-    pipe, generation_args= None, None
-    if args.use_phi:
-        pipe, generation_args = init_phi_utils()
-        args.cached_file_suffix="_phi"
     
     # origin_corpus = None
     bboxes_ls = None
@@ -382,7 +377,7 @@ if __name__ == "__main__":
         load_atom_datasets(full_data_path)
     
     elif args.dataset_name == "crepe":
-        queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls = load_crepe_datasets(full_data_path, query_path, subset_img_id=args.subset_img_id, is_test=args.is_test)
+        queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls = load_crepe_datasets(full_data_path, query_path, subset_img_id=args.subset_img_id)
         # queries, raw_img_ls, sub_queries_ls, img_idx_ls = load_crepe_datasets_full(full_data_path, query_path)
         img_idx_ls, img_file_name_ls = load_other_crepe_images(full_data_path, query_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
         # grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, None, query_key_ls=None) # [None for _ in range(len(queries))]
@@ -398,6 +393,7 @@ if __name__ == "__main__":
         # args.algebra_method=two
         
     elif args.dataset_name == "trec-covid":
+        os.environ["OPENAI_API_KEY"] = "sk-proj-ll9oBzXz0bgugMz9tXesT3BlbkFJQwwIhy23U5ZNRob4TLXD"
         url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(args.dataset_name)
         data_path = util.download_and_unzip(url, full_data_path)
         corpus, queries, qrels = GenericDataLoader(data_folder=data_path).load(split="test")       
@@ -416,20 +412,18 @@ if __name__ == "__main__":
         
         # query_key_ls = random.sample(full_query_key_ls, 100)
         # query_key_ls = sorted(query_key_ls)
-
-        
-        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, use_phi=args.use_phi, pipe=pipe, generation_args=generation_args, dataset_name="trec-covid")
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix)
         print(sub_queries_ls)
         if args.is_test:
             sub_queries_ls = {"1": sub_queries_ls[query_key]}
             print(sub_queries_ls)
         
-        # subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
-        # if False: #os.path.exists(subset_file_name):
-        #     corpus, qrels = utils.load(subset_file_name)
-        # else:        
-        #     corpus, qrels = subset_corpus(corpus, qrels, args.total_count)
-        #     utils.save((corpus, qrels), subset_file_name)
+        subset_file_name = f"output/{args.dataset_name}_subset_{args.total_count}.txt"
+        if False: #os.path.exists(subset_file_name):
+            corpus, qrels = utils.load(subset_file_name)
+        else:        
+            corpus, qrels = subset_corpus(corpus, qrels, args.total_count)
+            utils.save((corpus, qrels), subset_file_name)
         
         qrels = {key: qrels[idx_to_rid[key]] for key in sub_queries_ls if not check_empty_mappings(qrels[idx_to_rid[key]])}
         
@@ -438,9 +432,15 @@ if __name__ == "__main__":
             exit(1)
         
         origin_corpus = None #copy.copy(corpus)
+        print("Before")
+        print(corpus)
+        print(qrels)
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
+        print("After")
+        print(corpus)
+        print(qrels)
         query_key_idx_ls = [full_query_key_ls.index(key) for key in query_key_ls]
-        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_key_idx_ls, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, use_phi=args.use_phi, pipe=pipe, generation_args=generation_args) # [None for _ in range(len(queries))]
+        grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_key_idx_ls, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix) # [None for _ in range(len(queries))]
         # args.algebra_method=three
         queries = [queries[key] for key in query_key_ls]
     
@@ -457,9 +457,9 @@ if __name__ == "__main__":
         queries = {key:queries[key] for key in query_key_ls}
         # query_key_ls = random.sample(full_query_key_ls, 100)
         # query_key_ls = sorted(query_key_ls)
-        # query_hash = None
-        query_hash = "full"
-        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash, dataset_name="trec-covid")
+        query_hash = None
+        # query_hash = "full"
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash, dataset_name="fiqa")
         # sub_queries_ls = {"1":[['1 EIN", "multiple business names']]}
         print(sub_queries_ls)
         
@@ -478,6 +478,7 @@ if __name__ == "__main__":
             exit(1)
         
         origin_corpus = None #copy.copy(corpus)
+        
         corpus, qrels = convert_corpus_to_concepts_txt(corpus, qrels)
         query_key_idx_ls = list(range(len(queries))) #[query_key_ls.index(key) for key in full_query_key_ls]
         grouped_sub_q_ids_ls = group_dependent_segments_seq_all(queries, sub_queries_ls, full_data_path, query_key_idx_ls, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash) # [None for _ in range(len(queries))]
@@ -498,7 +499,7 @@ if __name__ == "__main__":
         # query_key_ls = sorted(query_key_ls)
         query_hash = "full"
         # query_hash = "full"
-        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash, dataset_name="trec-covid")
+        sub_queries_ls, idx_to_rid = decompose_queries_into_sub_queries(queries, data_path, query_key_ls=query_key_ls, cached_file_suffix=args.cached_file_suffix, query_hash=query_hash, dataset_name="fiqa")
         print(sub_queries_ls)
         # sub_queries_ls = {}
         
@@ -585,11 +586,10 @@ if __name__ == "__main__":
                 patch_count_ls = [1, 4, 8, 16, 32]
     else:
         # patch_count_ls = [8, 24, 32]
-        patch_count_ls = [1, 16, 8, 4, 32]
-        # if not args.dataset_name == "fiqa":
-        #     patch_count_ls = [1, 4, 8, 16, 32]
-        # else:
-        #     patch_count_ls = [4, 32, 128, 256]
+        if not args.dataset_name == "fiqa":
+            patch_count_ls = [1, 4, 8, 16, 32]
+        else:
+            patch_count_ls = [4, 32, 128, 256]
         # patch_count_ls = [1]
         # patch_count_ls = [32]
     
@@ -609,13 +609,17 @@ if __name__ == "__main__":
             store_sparse_index(samples_hash, img_sparse_emb, encoding_query = False)
 
     elif args.dataset_name in text_retrieval_datasets:
+        print("Before conversion")
+        print(corpus)
         
         if (args.use_raptor):
             raptor_model = RaptorEmbeddingGenerator()
         else:
             raptor_model = None
-        samples_hash,(img_emb, img_sparse_index), patch_emb_ls, bboxes_ls = convert_samples_to_concepts_txt(args, text_model, corpus, device, raptor_model=raptor_model, patch_count_ls=patch_count_ls)
         
+        samples_hash,(img_emb, img_sparse_index), patch_emb_ls, bboxes_ls = convert_samples_to_concepts_txt(args, text_model, corpus, device, raptor_model, patch_count_ls=patch_count_ls)
+        print(img_emb)
+        print(len(img_emb))
         # img_emb = text_model.encode_corpus(corpus)
         # if args.img_concept:
         #     _,img_per_patch_ls, patch_emb_ls = generate_patch_ids_ls(patch_emb_ls)
@@ -647,7 +651,7 @@ if __name__ == "__main__":
                 patch_emb_by_img_ls = torch.nn.functional.normalize(patch_emb_by_img_ls, p=2, dim=1)
     
             
-            patch_clustering_info_cached_file = get_dessert_clustering_res_file_name(args, samples_hash, patch_count_ls, clustering_number=args.clustering_number, index_method=args.index_method, typical_doclen=args.clustering_doc_count_factor, num_tables=args.num_tables, hashes_per_table=args.hashes_per_table)
+            patch_clustering_info_cached_file = get_dessert_clustering_res_file_name(samples_hash, patch_count_ls, clustering_number=args.clustering_number, index_method=args.index_method, typical_doclen=args.clustering_doc_count_factor, num_tables=args.num_tables, hashes_per_table=args.hashes_per_table)
             
             if not os.path.exists(patch_clustering_info_cached_file):
             
@@ -790,8 +794,7 @@ if __name__ == "__main__":
     # retrieve_by_full_query(img_emb, text_emb_ls)
     
     # if args.is_img_retrieval:
-    retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=(args.is_img_retrieval or not args.dataset_name == "webis-touche2020"), prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
-    # retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=True, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
+    retrieval_model = DRES(batch_size=16, algebra_method=args.algebra_method, is_img_retrieval=(args.is_img_retrieval or args.dataset_name == "webis-touche2020"), prob_agg=args.prob_agg, dependency_topk=args.dependency_topk)
     # else:
     #     retrieval_model = DRES(models.SentenceBERT("msmarco-distilbert-base-tas-b"), batch_size=16, algebra_method=one)
     retriever = EvaluateRetrieval(retrieval_model, score_function='cos_sim') # or "cos_sim" for cosine similarity
@@ -801,33 +804,27 @@ if __name__ == "__main__":
             text_emb_ls = [[torch.cat(item) for item in items] for items in text_emb_ls]
     
     # if args.query_concept:
-    perc_method = "one"
     if args.retrieval_method == "ours":
         if not args.img_concept:
             if not args.search_by_cluster:
                 if args.query_concept:
                     patch_emb_by_img_ls = [img_emb[idx].view(1,-1) for idx in range(len(img_emb))]
-                    # results=retrieve_by_embeddings0(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name)
-                    results=retrieve_by_embeddings(perc_method, full_sub_queries_ls, queries, retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name)
+                    results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name)
                 else:
-                    # results=retrieve_by_embeddings0(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name)
-                    results=retrieve_by_embeddings(perc_method, full_sub_queries_ls, queries, retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name)
+                    results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=None, grouped_sub_q_ids_ls=None, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name)
             else:
                 # results=retrieve_by_embeddings(retriever, img_emb, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
-                # results=retrieve_by_embeddings0(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, dataset_name=args.dataset_name)
-                results=retrieve_by_embeddings(perc_method, full_sub_queries_ls, queries, retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, dataset_name=args.dataset_name)
+                results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, dataset_name=args.dataset_name)
         else:
-            # if args.dataset_name == "webis-touche2020":
-            args.is_img_retrieval = True
+            if args.dataset_name == "webis-touche2020":
+                args.is_img_retrieval = True
                 
             if not args.search_by_cluster:
-                # results=retrieve_by_embeddings0(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name, is_img_retrieval=args.is_img_retrieval)
-                results=retrieve_by_embeddings(perc_method, full_sub_queries_ls, queries, retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name, is_img_retrieval=args.is_img_retrieval)
+                results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores, dataset_name=args.dataset_name, is_img_retrieval=args.is_img_retrieval)
             else:
                 # results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, clustering_info=(cluster_sub_X_tensor_ls, cluster_centroid_tensor, cluster_sample_count_ls, cluster_unique_sample_ids_ls, cluster_sample_ids_ls, cluster_sub_X_cat_patch_ids_ls, clustering_nbs_mappings), bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, clustering_topk=args.clustering_topk, sparse_sim_scores=sparse_sim_scores)
                 # grouped_sub_q_ids_ls, bboxes_overlap_ls, dependency_topk, device, prob_agg, is_img_retrieval
-                # results=retrieve_by_embeddings0(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, clustering_topk=args.clustering_topk, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk, device=device, is_img_retrieval=args.is_img_retrieval, method=args.algebra_method, index_method=args.index_method, _nprobe_query=args.nprobe_query, dataset_name=args.dataset_name)
-                results=retrieve_by_embeddings(perc_method, full_sub_queries_ls, queries, retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, clustering_topk=args.clustering_topk, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk, device=device, is_img_retrieval=args.is_img_retrieval, method=args.algebra_method, index_method=args.index_method, _nprobe_query=args.nprobe_query, dataset_name=args.dataset_name)
+                results=retrieve_by_embeddings(retriever, patch_emb_by_img_ls, text_emb_ls, qrels, query_count=args.query_count, parallel=args.parallel, use_clustering=args.search_by_cluster, bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, clustering_topk=args.clustering_topk, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls,doc_retrieval=retrieval_method, prob_agg=args.prob_agg, dependency_topk=args.dependency_topk, device=device, is_img_retrieval=args.is_img_retrieval, method=args.algebra_method, index_method=args.index_method, _nprobe_query=args.nprobe_query, dataset_name=args.dataset_name)
     # elif args.retrieval_method == "llm_ranker":
     #     ranker = LLM_ranker(corpus)
     #     results = ranker.retrieval(queries)

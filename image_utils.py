@@ -606,14 +606,17 @@ def load_other_sharegpt4v_mscoco_images(dataset_path, img_idx_ls, img_file_name_
     return img_idx_ls, img_file_name_ls
 
 
-def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=False):
+def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=False, is_test=False):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all6_2.csv")
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output.csv")
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output3.csv")
-    img_caption_file_name = os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output_with_dependency3.csv")
+    if is_test:
+        img_caption_file_name = os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output_with_dependency_example.csv")
+    else:
+        img_caption_file_name = os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all_output_with_dependency3.csv")
 
     with open(os.path.join(query_path, "prod_hard_negatives/selected_img_id_ls"), "rb") as f:
         selected_img_id_ls = pickle.load(f)

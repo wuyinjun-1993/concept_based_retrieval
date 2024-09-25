@@ -7,7 +7,7 @@ import re
 import json
 from retrieval_utils import decompose_single_query_parition_groups, decompose_single_query_ls
 from sparse_index import construct_sparse_index, store_sparse_index
-from LLM4split.prompt_utils import obtain_response_from_openai, init_phi_utils, obtain_response_from_phi_utils
+from LLM4split.prompt_utils import obtain_response_from_openai
 sparse_prefix='<s><|system|>\\nYou are an AI assistant that can understand human language.<|end|>\\n<|user|>\\nQuery: "'
 sparse_suffix='". Use one most important word to represent the query in retrieval task. Make sure your word is in lowercase.<|end|>\\n<|assistant|>\\nThe word is: "'
 import time
@@ -93,10 +93,13 @@ class ConceptLearner_text:
         full_bbox_ls = []
         
         for key in tqdm(range(len(self.corpus))):
+            print(key)
             patch_activation, bbox_ls = self.split_and_encoding_single_corpus(key, patch_count=patch_count)
             # patch_activations[key] = torch.cat(patch_activation)
             patch_activations.append(patch_activation)
+            #print(patch_activation.shape)
             full_bbox_ls.append(bbox_ls)
+            #print(bbox_ls)
         
         utils.save((patch_activations, full_bbox_ls), cached_file_name)
         
@@ -130,6 +133,8 @@ def construct_dense_or_sparse_encodings_queries(queries, text_model,add_sparse_i
 
 
 def construct_dense_or_sparse_encodings(args, corpus, text_model, samples_hash, is_sparse=False):
+    print("Encoding:")
+    print(corpus)
     if args.model_name == "default" or args.is_img_retrieval:
         corpus_embedding_file_name = f"output/saved_corpus_embeddings_{samples_hash}"
     elif args.model_name == "llm":
@@ -146,6 +151,7 @@ def construct_dense_or_sparse_encodings(args, corpus, text_model, samples_hash, 
     vocab_dict = {v: k for k, v in vocab_dict.items()}
     tokenizer = text_model.q_model.tokenizer
     if os.path.exists(corpus_embedding_file_name):
+        print(corpus_embedding_file_name)
         img_emb = utils.load(corpus_embedding_file_name)
         if not is_sparse:
             img_emb = img_emb.cpu()
@@ -157,7 +163,26 @@ def construct_dense_or_sparse_encodings(args, corpus, text_model, samples_hash, 
         for idx in tqdm(range(0, len(corpus), local_bz)):
             end_id = min(idx+local_bz, len(corpus))
             curr_corpus = corpus[idx:end_id]
+            '''
+            if raptor_model != None:
+                sentences = [(doc["title"] + " " + doc["text"]).strip() if "title" in doc else doc["text"].strip() for doc in curr_corpus]
+                img_embs_tuple = raptor_model.generate_embeddings(sentences)
+                img_embs = img_emb_tuple[0]
+                img_embs_decomposed_text = img_emb_tuple[1]
+                print("image embedding tensor")
+                print(img_emb)
+                print("Decomposed results")
+                print(img_emb_decomposed_text)
+                if idx == 0:
+                    img_emb_ls = img_embs
+                else:
+                    img_emb_ls.extend(img_embs)
+            else:
+            '''
+            print("No raptor")
             img_emb = text_model.encode_corpus(curr_corpus,convert_to_tensor=True, batch_size=bz, show_progress_bar=False, is_sparse=is_sparse)
+            #print(img_emb)
+            #print(img_emb.shape)
             if is_sparse:
                 construct_sparse_index(jsonl_data, vocab_dict, list(range(idx, end_id)), img_emb, curr_corpus, tokenizer)
             else:
@@ -177,9 +202,8 @@ def construct_dense_or_sparse_encodings(args, corpus, text_model, samples_hash, 
 
 
 
-def convert_samples_to_concepts_txt(args, text_model, corpus, device, raptor_model=None, patch_count_ls = [32], is_sparse=False):
+def convert_samples_to_concepts_txt(args, text_model, corpus, device, raptor_model, patch_count_ls = [32], is_sparse=False):
     cl = ConceptLearner_text(corpus, text_model, args.dataset_name, device=device)
-    
     sentences = text_model.convert_corpus_to_ls(corpus)
     
     if args.total_count > 0:
@@ -188,32 +212,6 @@ def convert_samples_to_concepts_txt(args, text_model, corpus, device, raptor_mod
     else:
         samples_hash = f"{args.dataset_name}_full"
     print("sample hash::", samples_hash)
-    
-    # if args.model_name == "default":
-    #     corpus_embedding_file_name = f"output/saved_corpus_embeddings_{samples_hash}.pkl"
-    # elif args.model_name == "llm":
-    #     corpus_embedding_file_name = f"output/saved_corpus_embeddings_llm_{samples_hash}.pkl"
-    # elif args.model_name == "phi":
-    #     corpus_embedding_file_name = f"output/saved_corpus_embeddings_phi_{samples_hash}.pkl"
-    # else:
-    #     raise Exception("Invalid model name")
-    
-    # if os.path.exists(corpus_embedding_file_name):
-    #     img_emb = utils.load(corpus_embedding_file_name)
-    #     img_emb = img_emb.cpu()
-    # else:
-    #     local_bz = 20480
-    #     for idx in tqdm(range(0, len(corpus), local_bz)):
-    #         end_id = min(idx+local_bz, len(corpus))
-    #         curr_corpus = corpus[idx:end_id]
-    #         img_emb = text_model.encode_corpus(curr_corpus,convert_to_tensor=True, batch_size=2048, show_progress_bar=False)
-    #         if idx == 0:
-    #             img_emb_ls = img_emb.cpu()
-    #         else:
-    #             img_emb_ls = torch.cat([img_emb_ls, img_emb.cpu()], dim=0)
-    #     # img_emb = text_model.encode_corpus(corpus,convert_to_tensor=True, show_progress_bar=False)    
-    #     img_emb = img_emb_ls
-    #     utils.save(img_emb, corpus_embedding_file_name)
         
     img_emb = construct_dense_or_sparse_encodings(args, corpus, text_model, samples_hash)
     img_sparse_emb = None
@@ -223,31 +221,32 @@ def convert_samples_to_concepts_txt(args, text_model, corpus, device, raptor_mod
     if args.img_concept:
         patch_activation_ls=[]
         full_bbox_ls = []
-        if raptor_model != None:
-                print("Raptor Image Concepts")
-                cached_file_name=f"output/saved_patches_raptor_1_{samples_hash}.pkl"
+        patch_activations = []
+        bbox_ls= []
+        if(raptor_model != None):
+            print("Raptor Image Concepts")
+            cached_file_name=f"output/saved_patches_raptor_1_{samples_hash}.pkl"
+        
+            if os.path.exists(cached_file_name):
+                print("Loading cached patches")
+                print(samples_hash)
+                patch_activations, bbox_ls = utils.load(cached_file_name)
+            else:
+                for doc in corpus:
+                    whole_doc = doc['title'] + " " + doc['text']
+                    tree = raptor_model.RA.add_documents(whole_doc)
+                    doc_patch_activations, doc_bbox_ls = raptor_model.process_tree(tree)
+                    patch_activations.append(doc_patch_activations)
+                    bbox_ls.append(doc_bbox_ls)
+                #utils.save((patch_activations, bbox_ls), cached_file_name)
             
-                if os.path.exists(cached_file_name):
-                    print("Loading cached patches")
-                    print(samples_hash)
-                    patch_activations, bbox_ls = utils.load(cached_file_name)
-                else:
-                    patch_activations = []
-                    bbox_ls = []
-                    for doc in corpus:
-                        whole_doc = doc['title'] + " " + doc['text']
-                        tree = raptor_model.RA.add_documents(whole_doc)
-                        doc_patch_activations, doc_bbox_ls = raptor_model.process_tree(tree)
-                        patch_activations.append(doc_patch_activations)
-                        bbox_ls.append(doc_bbox_ls)
-                    utils.save((patch_activations, bbox_ls), cached_file_name)
-                    
-                patch_activation_ls.append(patch_activations)
-                full_bbox_ls.append(bbox_ls)
+            patch_activation_ls.append(patch_activations)
+            full_bbox_ls.append(bbox_ls)
         else:
+            #print("The corpus:")
+            #print(corpus)
             for idx in range(len(patch_count_ls)):
                 patch_count = patch_count_ls[idx]
-                
                 patch_activations, bbox_ls = cl.get_patches(args.model_name, samples_hash, method="slic", patch_count=patch_count)
                 # cos_sim_ls = []
                 # for sub_idx in range(len(patch_activations)):
@@ -349,7 +348,7 @@ def reformat_patch_embeddings_txt(patch_emb_ls, img_emb):
     return patch_emb_curr_img_ls
 
 
-def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, query_key_ls=None, cached_file_suffix="", dataset_name = "crepe", use_phi=False, pipe = None, generation_args = None):
+def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, query_key_ls=None, cached_file_suffix="", dataset_name = "trec-covid"):
     if query_hash is not None:
         sub_query_file_name = os.path.join(data_path, f"sub_queries_{query_hash}.json")
     else:
@@ -378,9 +377,7 @@ def decompose_queries_into_sub_queries(queries, data_path, query_hash=None, quer
         for qid in query_key_ls:
             query = queries[qid]
             # sub_caption_str=obtain_response_from_openai(dataset_name = "trec-covid", query=query)
-
-            sub_caption_str=obtain_response_from_openai(dataset_name = dataset_name, query=query, use_phi=use_phi, pipe=pipe, generation_args=generation_args)
-
+            sub_caption_str=obtain_response_from_openai(dataset_name = dataset_name, query=query)
             sub_captions = decompose_single_query_ls(sub_caption_str)
             sub_queries[rid_to_idx[qid]] = sub_captions
             time.sleep(2)

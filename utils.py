@@ -27,6 +27,9 @@ def get_final_res_file_name(args, patch_count_ls):
     if args.search_by_cluster:
         file_prefix =  file_prefix + "_cluster"
     
+    if args.is_test:
+        file_prefix =  file_prefix + "_test"
+    
     patch_clustering_info_cached_file = f"{file_prefix}.pkl"
         
     return patch_clustering_info_cached_file

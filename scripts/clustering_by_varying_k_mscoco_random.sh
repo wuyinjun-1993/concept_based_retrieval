@@ -24,11 +24,11 @@ export CUDA_VISIBLE_DEVICES=$2
 
 random_seed=$3
 
-nprobe_query=100
+nprobe_query=20
 
 cd ../
 
-topk_vals=(200 500 1000 2000 5000 10000)
+topk_vals=(50 100 150 200 250 300)
 
 for val in ${topk_vals[@]}
 do
