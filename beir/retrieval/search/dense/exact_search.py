@@ -11,6 +11,7 @@ from joblib import Parallel, delayed
 import threading
 import os
 import cv2
+import numpy as np
 #Parent class for any dense model
 
 one="one"
@@ -100,7 +101,7 @@ class DenseRetrievalExactSearch:
             
         return valid_sample_count, valid_samples_to_patch_ids_mappings
     
-    def compute_dependency_aware_sim_score0(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, valid_patch_ids=None):
+    def compute_dependency_aware_sim_score0(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, valid_patch_ids=None, invalid_indices=None):
         if grouped_sub_q_ids_ls[query_itr] is not None:
             curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_q_ls_idx]
         else:
@@ -132,6 +133,10 @@ class DenseRetrievalExactSearch:
                 # print(curr_grouped_sub_q_ids, sub_query_idx)
                 if valid_patch_ids is not None:
                     selected_embedding_idx = torch.tensor(list(set(selected_embedding_idx.tolist()).intersection(valid_patch_ids)))
+                if invalid_indices is not None:
+                    selected_embedding_idx = torch.tensor(list(set(selected_embedding_idx.tolist()).difference(invalid_indices)))
+                if len(selected_embedding_idx) <= 0:
+                    return 0, []
                 
                 curr_prod_mat = self.score_functions[score_function](curr_query_embedding[curr_grouped_sub_q_ids[sub_query_idx]].to(device), curr_sub_corpus_embeddings[selected_embedding_idx].to(device)).view(-1,1)
                 if self.prob_agg == "prod":
@@ -172,7 +177,7 @@ class DenseRetrievalExactSearch:
             else:
                 curr_scores_ls += torch.max(sub_curr_scores)
                 
-        return curr_scores_ls
+        return curr_scores_ls, selected_patch_ids_ls[torch.argmax(sub_curr_scores).item()]
     
     # @profile
     def compute_dependency_aware_sim_score(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, valid_patch_ids=None):
@@ -259,6 +264,89 @@ class DenseRetrievalExactSearch:
                 
         return curr_scores_ls
 
+
+    # def processing_count_node_ls(self, count_node_ls,image_patch_embeddings, image_containment_list, all_neighbors_list, agg_method, dependency_topk, all_containment_ls=None):
+    #     for count_node in count_node_ls:
+    #         count_node = count_node_ls[idx]
+    #         self.processing_one_count_node(count_node, image_patch_embeddings, image_containment_list, all_neighbors_list, agg_method, dependency_topk, all_containment_ls=all_containment_ls)
+        
+
+    def processing_one_count_node(self, corpus_idx, score_function, head_count_node, image_patch_embeddings, image_containment_list, bboxes_overlap_ls, sub_q_ls_idx, agg_method, query_itr, device):
+        CNT = head_count_node.tgt_count
+        all_count_nodes = []
+        all_plain_nodes = []
+        for node in head_count_node.children:
+            if node.node_type == 'count':
+                all_count_nodes.append(node)
+            elif node.node_type == 'plain':
+                all_plain_nodes.append(node)
+        SIM_ls = []
+        All_Match_Seg_ls = []
+        # if invalid_indices is None:
+        invalid_indices = []
+        for idx in range(0, CNT):
+            Match_Seg_ls = []
+            #Invoke algorithm 2
+            if len(all_plain_nodes) > 0:
+                subquery_str_list = torch.cat([node.text_features for node in all_plain_nodes])
+                #Default assumption that all subqueries are mutually dependent here
+                # dependency_list = [i for i in range(0, len(subquery_str_list))]
+
+                # if (len(dependency_list) > 0):
+                    # compute_dependency_aware_sim_score0(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, valid_patch_ids=None)
+                    # corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr
+                sim_1, matched_segs = self.compute_dependency_aware_sim_score0(subquery_str_list, image_patch_embeddings, corpus_idx, score_function, [None], 0, device, bboxes_overlap_ls, 0, invalid_indices=invalid_indices)#all_neighbors_list, agg_method, invalid_indices)
+            else:
+                if agg_method == 'sum':
+                    sim_1 = 0
+                    matched_segs = []
+                elif agg_method == 'prod':
+                    sim_1 = 1
+                    matched_segs = []
+
+            # Display the matched patches for verification
+            #print(matched_segs)
+            '''
+            for seg_idx in matched_segs:
+            patch = patch_img_list[seg_idx]
+            plt.figure(figsize=(2, 2))
+            plt.imshow(patch)
+            plt.title(f"Patch {seg_idx}")
+            plt.show()  # This ensures the image is displayed before continuing
+            '''
+
+            Match_Seg_ls.extend(matched_segs)
+            while all_count_nodes:
+                count_node = all_count_nodes.pop(0)
+                # make sure image_patch_embeddings only contains valid patches !!!!
+                sim_2, matched_segs = self.processing_one_count_node(corpus_idx, score_function, count_node, image_patch_embeddings, image_containment_list, bboxes_overlap_ls, sub_q_ls_idx,agg_method, query_itr, device)
+                Match_Seg_ls.extend(matched_segs)
+                if agg_method == 'sum':
+                    sim_1 = sim_1 + sim_2
+                elif agg_method == 'prod':
+                    sim_1 = sim_1 * sim_2
+            SIM_ls.append(sim_1)
+            unique_matched_indices = list(set(Match_Seg_ls))
+            All_Match_Seg_ls.extend(unique_matched_indices)
+            #Find all close neighbors
+            close_neighbors = []
+            for idx in unique_matched_indices:
+                neighbors = image_containment_list[idx]
+                close_neighbors.extend(neighbors)
+            unique_matched_indices.extend(close_neighbors)
+            invalid_indices.extend(list(set(unique_matched_indices)))
+            #print(invalid_indices)
+
+        # Final aggregation over all groups
+        final_score = 0
+        SIM_ls = torch.tensor(SIM_ls)
+        if agg_method == 'sum':
+            final_score = torch.sum(SIM_ls)
+        elif agg_method == 'prod':
+            final_score = torch.prod(SIM_ls)
+
+        return final_score, list(set(All_Match_Seg_ls))
+
     def search(self, 
                corpus: Dict[str, Dict[str, str]], 
                queries: Dict, 
@@ -266,7 +354,7 @@ class DenseRetrievalExactSearch:
                score_function: str,
                return_sorted: bool = False, 
                query_negations: List=None, all_sub_corpus_embedding_ls=None, query_embeddings=None, query_count=10, device = 'cuda', bboxes_ls=None, img_file_name_ls=None, bboxes_overlap_ls=None,grouped_sub_q_ids_ls=None,
-               sparse_sim_scores=None, dataset_name="", **kwargs) -> Dict[str, Dict[str, float]]:
+               sparse_sim_scores=None, dataset_name="",all_containment_ls=None, **kwargs) -> Dict[str, Dict[str, float]]:
         #Create embeddings for all queries using model.encode_queries()
         #Runs semantic search against the corpus embeddings
         #Returns a ranked list with the corpus ids
@@ -376,14 +464,15 @@ class DenseRetrievalExactSearch:
                             curr_scores = 1
                             
                             # if len(sub_corpus_embeddings.shape) == 2 and sub_corpus_embeddings.shape[0] > 1:
-                            if curr_query_embedding.shape[0] == 1:
-                                if self.is_img_retrieval:
-                                    curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
-                                else:
-                                    curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
-                                curr_scores = curr_scores_ls
-                                full_curr_scores_ls.append(curr_scores.item())
-                                continue
+                            if not self.algebra_method == "five":
+                                if curr_query_embedding.shape[0] == 1:
+                                    if self.is_img_retrieval:
+                                        curr_scores_ls = self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
+                                    else:
+                                        curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
+                                    curr_scores = curr_scores_ls
+                                    full_curr_scores_ls.append(curr_scores.item())
+                                    continue
                             # else:
                                 # curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
                             if self.algebra_method == one or self.algebra_method == three:
@@ -398,8 +487,12 @@ class DenseRetrievalExactSearch:
                                     curr_scores_ls = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
                                 
                                 # curr_scores_ls_max_id = torch.argmax(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
-                            else:
+                            elif self.algebra_method == four:
                                 curr_scores_ls = self.compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr)
+                            else:
+                                # corpus_idx, score_function, head_count_node, image_patch_embeddings, image_containment_list, bboxes_overlap_ls, sub_q_ls_idx, agg_method, containment_ls, query_itr
+                                curr_scores_ls, _ = self.processing_one_count_node(corpus_idx, score_function, curr_query_embedding.root, sub_corpus_embeddings, all_containment_ls[corpus_idx], bboxes_overlap_ls, sub_q_ls_idx, self.prob_agg, query_itr, device)
+                                # curr_scores_ls = self.compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr)
                                     # curr_scores_ls2 = torch.max(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
                                     
                             # else:    
