@@ -680,10 +680,10 @@ class DocRetrieval:
         if prob_agg == "prod":
             all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
         else:
-            if dataset_name == "trec-covid":
+            # if dataset_name == "trec-covid":
                 all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
-            else:
-                all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
+            # else:
+            #     all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
         print(all_cos_scores_tensor.shape)
         #Get top-k values
         cos_scores_top_k_values, cos_scores_top_k_idx = torch.topk(all_cos_scores_tensor, min(top_k+1, len(all_cos_scores_tensor[0])), dim=1, largest=True)#, sorted=return_sorted)

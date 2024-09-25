@@ -14,6 +14,9 @@ import time
 import numpy as np
 # openai.api_key = os.getenv("OPENAI_API_KEY")
 import pandas as pd
+from scipy.stats import percentileofscore
+from collections import defaultdict
+
 def obtain_key_words(query):
     client = OpenAI(
         # This is the default and can be omitted
@@ -181,7 +184,7 @@ def retrieve_with_dessert(all_sub_corpus_embedding_ls, query_embeddings, doc_ret
     return results
 
 
-def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, clustering_topk=500, batch_size=16,in_disk=False,doc_retrieval=None,use_clustering=False,prob_agg="prod",method="two",_nprobe_query=2, index_method="default",dataset_name="", **kwargs):
+def retrieve_by_embeddings0(retriever, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, clustering_topk=500, batch_size=16,in_disk=False,doc_retrieval=None,use_clustering=False,prob_agg="prod",method="two",_nprobe_query=2, index_method="default",dataset_name="", **kwargs):
     print("results with decomposition::")
     # if parallel:
     #     all_sub_corpus_embedding_dataset= Partitioned_vector_dataset(all_sub_corpus_embedding_ls)
@@ -222,6 +225,134 @@ def retrieve_by_embeddings(retriever, all_sub_corpus_embedding_ls, query_embeddi
     return results
     # print("start evaluating performance for single query with decomposition")
     # return evaluate_for_query_batches(retriever, qrels, results)
+
+# retriever, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, clustering_topk=500, batch_size=16,in_disk=False,doc_retrieval=None,use_clustering=False,prob_agg="prod",method="two",_nprobe_query=2, index_method="default",dataset_name="", **kwargs
+def retrieve_by_embeddings(perc_method, full_sub_queries_ls, queries, retriever, all_sub_corpus_embedding_ls, query_embeddings, qrels, query_count = 10, parallel=False, clustering_topk=500, batch_size=16,in_disk=False,doc_retrieval=None,use_clustering=False,prob_agg="prod",method="two",_nprobe_query=2, index_method="default",dataset_name="", **kwargs):
+    print("results with decomposition::")
+    # if parallel:
+    #     all_sub_corpus_embedding_dataset= Partitioned_vector_dataset(all_sub_corpus_embedding_ls)
+    #     all_sub_corpus_embedding_loader = torch.utils.data.DataLoader(all_sub_corpus_embedding_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
+    
+    #     results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_loader, query_count=query_count, parallel=parallel)
+    # else:
+    if type(all_sub_corpus_embedding_ls) is list:
+        all_sub_corpus_embedding_ls = [torch.nn.functional.normalize(all_sub_corpus_embedding, p=2, dim=-1) for all_sub_corpus_embedding in all_sub_corpus_embedding_ls]
+    else:
+        all_sub_corpus_embedding_ls = torch.nn.functional.normalize(all_sub_corpus_embedding_ls, p=2, dim=-1)
+    
+    
+    t1 = time.time()
+    if type(query_embeddings[0]) is list:
+        query_embeddings = [[torch.nn.functional.normalize(query_embedding, p=2, dim=-1) for query_embedding in local_query_embedding] for local_query_embedding in query_embeddings]
+    else:
+        query_embeddings = [torch.nn.functional.normalize(query_embedding, p=2, dim=-1) for query_embedding in query_embeddings]
+    
+    kwargs["dataset_name"] = dataset_name
+    if not use_clustering:
+        
+        # results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk)
+        results,_ = retriever.retrieve(None, None, query_embeddings=query_embeddings, all_sub_corpus_embedding_ls=all_sub_corpus_embedding_ls, query_count=query_count, parallel=parallel, in_disk=in_disk, **kwargs)
+    else:
+        if not index_method == "dessert":
+            kwargs['index_method'] = index_method
+            doc_retrieval._nprobe_query = _nprobe_query #max(2, int(clustering_topk/20))
+            # results = doc_retrieval.query_multi_queries(all_sub_corpus_embedding_ls, query_embeddings, top_k=min(clustering_topk,len(all_sub_corpus_embedding_ls)), num_to_rerank=min(clustering_topk,len(all_sub_corpus_embedding_ls)), prob_agg=prob_agg,method=method, **kwargs)
+            results = doc_retrieval.query_multi_queries(all_sub_corpus_embedding_ls, query_embeddings, top_k=min(clustering_topk,len(all_sub_corpus_embedding_ls)), num_to_rerank=min(clustering_topk,len(all_sub_corpus_embedding_ls)), prob_agg=prob_agg,method=method, **kwargs)
+        else:
+            kwargs['clustering_topk'] = clustering_topk
+            results = retrieve_with_dessert(all_sub_corpus_embedding_ls, query_embeddings, doc_retrieval, prob_agg, method, **kwargs)
+        # results = {str(idx+1): results[idx] for idx in range(len(results))}
+    t2 = time.time()
+    
+    print(f"Time taken: {t2-t1:.2f}s")
+    print("These are the queries:")
+    print(queries)
+    print("These are the sub-queries:")
+    print(full_sub_queries_ls)
+    #Option 1: count of words
+    if perc_method == "one":
+        print("Option 1: count of words")
+        query_lengths = [len(query.split()) for query in queries]
+    #Option 2: length of sentence
+    if perc_method == "two":
+        print("Option 2: length of sentence")
+        query_lengths = [len(query) for query in queries]
+    #Option 3: number of subqueries
+    #As an example, subquery is ['a car parked on a street', 'a street next to a tree', 'a street with a parking meter', 'a street with a lamp post', 'bikes near the tree.'], ['a car parked on a street next to a tree. the street has a parking meter and a lamp post. there are bikes near the tree.']]
+    elif perc_method == "three":
+        print("Option 3: number of subqueries")
+        query_lengths = [len(subquery[0]) for subquery in full_sub_queries_ls]
+    print("This is query_lengths:")
+    print(query_lengths)
+    
+    #Calculate the percentile rank for each query length
+    percentile_ranks = [min(percentileofscore(query_lengths, length), 100) for length in query_lengths]
+    
+    # Assign each query to a bucket
+    query_buckets = []
+    for rank in percentile_ranks:
+        #print(rank)
+        if rank >= 99:
+            query_buckets.append(9.9) # 99-100
+        elif rank >= 95:
+            query_buckets.append(9.5) # 95-99
+        elif rank >= 90:
+            query_buckets.append(9) # 90-95
+        else:
+            query_buckets.append(int(rank // 10))  # 0-10, 10-20, ..., 80-90
+
+    print("These are the percentiles:")
+    print(query_buckets)
+
+    # Grouping queries by their percentile bucket
+    bucket_groups = defaultdict(list)
+    for i, bucket in enumerate(query_buckets):
+        if bucket < 9:
+            bucket_groups[bucket].append(i)
+        if bucket == 9: #90-100th percentile
+            bucket_groups[9].append(i)
+        if bucket == 9.5: #95-100th percentile
+            bucket_groups[9].append(i)
+            bucket_groups[9.5].append(i)
+        if bucket == 9.9: #99-100th percenntile
+            bucket_groups[9].append(i)
+            bucket_groups[9.5].append(i)
+            bucket_groups[9.9].append(i)
+    print(bucket_groups)
+    
+    # Evaluate recall for each bucket
+    bucket_recall = {}
+    sorted_buckets = sorted(bucket_groups.keys())
+
+    for bucket in sorted_buckets:
+        indices = bucket_groups[bucket]
+        filtered_queries = [queries[i] for i in indices]
+        filtered_qrels = {str(i + 1): qrels[str(i + 1)] for i in indices}
+        filtered_results = {str(i + 1): results[str(i + 1)] for i in indices}
+        
+        if bucket == 9:
+            range_name = "90-100"
+        elif bucket == 9.5:
+            range_name = "95-100"
+        elif bucket == 9.9:
+            range_name = "99-100"
+        else:
+            range_name = f"{bucket * 10}-{bucket * 10 + 10}"
+
+        print(f"Percentile range {range_name}:")
+        print(f"{len(indices)} queries in this percentile range")
+        
+        ndcg, _map, recall, precision = retriever.evaluate(filtered_qrels, filtered_results, retriever.k_values, ignore_identical_ids=False)
+        bucket_recall[range_name] = recall
+
+    print("Overall recall by buckets:")
+    for range_name, recall in bucket_recall.items():
+        print(f"{range_name}: {recall}")
+    
+    print("Overall scores:")
+    ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values, ignore_identical_ids=False)
+    
+    return results
 
 
 def decompose_queries_by_keyword(dataset_name, queries, out_dir="out/"):
