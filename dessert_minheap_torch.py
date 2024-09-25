@@ -34,7 +34,7 @@ def dot_scores(a: torch.Tensor, b: torch.Tensor):
     return torch.mm(a_norm, b_norm.transpose(0, 1)) #TODO: this keeps allocating GPU memory
     # return torch.mm(a, b.transpose(0, 1)) #TODO: this keeps allocating GPU memory
 # @profile
-def processing_one_count_node(corpus_idx, head_count_node, image_patch_embeddings, image_containment_list, bboxes_overlap_ls, sub_q_ls_idx, agg_method, query_itr, device,is_img_retrieval=False, prob_agg="sum", dependency_topk=50):
+def processing_one_count_node(corpus_idx, head_count_node, image_patch_embeddings, image_containment_list, bboxes_overlap_ls, sub_q_ls_idx, agg_method, query_itr, device,is_img_retrieval=False, prob_agg="sum", dependency_topk=50, valid_idx=None):
         CNT = head_count_node.tgt_count
         all_count_nodes = []
         all_plain_nodes = []
@@ -47,6 +47,8 @@ def processing_one_count_node(corpus_idx, head_count_node, image_patch_embedding
         All_Match_Seg_ls = []
         # if invalid_indices is None:
         invalid_indices = []
+        # if valid_idx is None:
+        #     valid_idx = list(range(len(image_patch_embeddings)))
         for idx in range(0, CNT):
             Match_Seg_ls = []
             #Invoke algorithm 2
@@ -59,7 +61,7 @@ def processing_one_count_node(corpus_idx, head_count_node, image_patch_embedding
                     # compute_dependency_aware_sim_score0(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, valid_patch_ids=None)
                     # corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr
                 # compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
-                sim_1, matched_segs = compute_dependency_aware_sim_score0(subquery_str_list, image_patch_embeddings, corpus_idx, [None], 0, device, bboxes_overlap_ls, 0, invalid_indices=invalid_indices,is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)#all_neighbors_list, agg_method, invalid_indices)
+                sim_1, matched_segs = compute_dependency_aware_sim_score0(subquery_str_list, image_patch_embeddings, corpus_idx, [None], 0, device, bboxes_overlap_ls, 0, invalid_indices=invalid_indices,is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk, valid_patch_ids=valid_idx)#all_neighbors_list, agg_method, invalid_indices)
             else:
                 if agg_method == 'sum':
                     sim_1 = 0
@@ -83,7 +85,7 @@ def processing_one_count_node(corpus_idx, head_count_node, image_patch_embedding
             while all_count_nodes:
                 count_node = all_count_nodes.pop(0)
                 # make sure image_patch_embeddings only contains valid patches !!!!
-                sim_2, matched_segs = processing_one_count_node(corpus_idx, count_node, image_patch_embeddings, image_containment_list, bboxes_overlap_ls, sub_q_ls_idx,agg_method, query_itr, device,is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
+                sim_2, matched_segs = processing_one_count_node(corpus_idx, count_node, image_patch_embeddings, image_containment_list, bboxes_overlap_ls, sub_q_ls_idx,agg_method, query_itr, device,is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk, valid_idx=valid_idx)
                 Match_Seg_ls.extend(matched_segs)
                 if agg_method == 'sum':
                     sim_1 = sim_1 + sim_2
@@ -99,6 +101,10 @@ def processing_one_count_node(corpus_idx, head_count_node, image_patch_embedding
                 close_neighbors.extend(neighbors)
             unique_matched_indices.extend(close_neighbors)
             invalid_indices.extend(list(set(unique_matched_indices)))
+            if valid_idx is None:
+                valid_idx = list(set(range(len(image_patch_embeddings))).difference(invalid_indices))
+            else:
+                valid_idx = list(set(range(len(image_patch_embeddings))).difference(invalid_indices).intersection(valid_idx))
             #print(invalid_indices)
 
         # Final aggregation over all groups
