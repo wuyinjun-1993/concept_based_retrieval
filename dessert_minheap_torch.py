@@ -34,8 +34,85 @@ def dot_scores(a: torch.Tensor, b: torch.Tensor):
     return torch.mm(a_norm, b_norm.transpose(0, 1)) #TODO: this keeps allocating GPU memory
     # return torch.mm(a, b.transpose(0, 1)) #TODO: this keeps allocating GPU memory
 # @profile
+def processing_one_count_node(corpus_idx, head_count_node, image_patch_embeddings, image_containment_list, bboxes_overlap_ls, sub_q_ls_idx, agg_method, query_itr, device,is_img_retrieval=False, prob_agg="sum", dependency_topk=50):
+        CNT = head_count_node.tgt_count
+        all_count_nodes = []
+        all_plain_nodes = []
+        for node in head_count_node.children:
+            if node.node_type == 'count':
+                all_count_nodes.append(node)
+            elif node.node_type == 'plain':
+                all_plain_nodes.append(node)
+        SIM_ls = []
+        All_Match_Seg_ls = []
+        # if invalid_indices is None:
+        invalid_indices = []
+        for idx in range(0, CNT):
+            Match_Seg_ls = []
+            #Invoke algorithm 2
+            if len(all_plain_nodes) > 0:
+                subquery_str_list = torch.cat([node.text_features for node in all_plain_nodes])
+                #Default assumption that all subqueries are mutually dependent here
+                # dependency_list = [i for i in range(0, len(subquery_str_list))]
 
-def compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, prob_agg = "prod", is_img_retrieval=False, dependency_topk=50, valid_patch_ids=None):
+                # if (len(dependency_list) > 0):
+                    # compute_dependency_aware_sim_score0(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, valid_patch_ids=None)
+                    # corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr
+                # compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
+                sim_1, matched_segs = compute_dependency_aware_sim_score0(subquery_str_list, image_patch_embeddings, corpus_idx, [None], 0, device, bboxes_overlap_ls, 0, invalid_indices=invalid_indices,is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)#all_neighbors_list, agg_method, invalid_indices)
+            else:
+                if agg_method == 'sum':
+                    sim_1 = 0
+                    matched_segs = []
+                elif agg_method == 'prod':
+                    sim_1 = 1
+                    matched_segs = []
+
+            # Display the matched patches for verification
+            #print(matched_segs)
+            '''
+            for seg_idx in matched_segs:
+            patch = patch_img_list[seg_idx]
+            plt.figure(figsize=(2, 2))
+            plt.imshow(patch)
+            plt.title(f"Patch {seg_idx}")
+            plt.show()  # This ensures the image is displayed before continuing
+            '''
+
+            Match_Seg_ls.extend(matched_segs)
+            while all_count_nodes:
+                count_node = all_count_nodes.pop(0)
+                # make sure image_patch_embeddings only contains valid patches !!!!
+                sim_2, matched_segs = processing_one_count_node(corpus_idx, count_node, image_patch_embeddings, image_containment_list, bboxes_overlap_ls, sub_q_ls_idx,agg_method, query_itr, device,is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
+                Match_Seg_ls.extend(matched_segs)
+                if agg_method == 'sum':
+                    sim_1 = sim_1 + sim_2
+                elif agg_method == 'prod':
+                    sim_1 = sim_1 * sim_2
+            SIM_ls.append(sim_1)
+            unique_matched_indices = list(set(Match_Seg_ls))
+            All_Match_Seg_ls.extend(unique_matched_indices)
+            #Find all close neighbors
+            close_neighbors = []
+            for idx in unique_matched_indices:
+                neighbors = image_containment_list[idx]
+                close_neighbors.extend(neighbors)
+            unique_matched_indices.extend(close_neighbors)
+            invalid_indices.extend(list(set(unique_matched_indices)))
+            #print(invalid_indices)
+
+        # Final aggregation over all groups
+        final_score = 0
+        SIM_ls = torch.tensor(SIM_ls)
+        if agg_method == 'sum':
+            final_score = torch.sum(SIM_ls)
+        elif agg_method == 'prod':
+            final_score = torch.prod(SIM_ls)
+
+        return final_score, list(set(All_Match_Seg_ls))
+
+
+def compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, prob_agg = "prod", is_img_retrieval=False, dependency_topk=50, valid_patch_ids=None, invalid_indices=None):
         if grouped_sub_q_ids_ls[query_itr] is not None:
             curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_q_ls_idx]
         else:
@@ -63,6 +140,11 @@ def compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddi
                 # print(curr_grouped_sub_q_ids, sub_query_idx)
                 if valid_patch_ids is not None:
                     selected_embedding_idx = torch.tensor(list(set(selected_embedding_idx.tolist()).intersection(valid_patch_ids)))
+                if invalid_indices is not None:
+                    selected_embedding_idx = torch.tensor(list(set(selected_embedding_idx.tolist()).difference(invalid_indices)))
+
+                if len(selected_embedding_idx) <= 0:
+                    return 0, []
 
                 curr_prod_mat = dot_scores(curr_query_embedding[curr_grouped_sub_q_ids[sub_query_idx]].to(device), curr_sub_corpus_embeddings[selected_embedding_idx].to(device)).view(-1,1)
                 if prob_agg == "prod":
@@ -103,7 +185,7 @@ def compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddi
             else:
                 curr_scores_ls += torch.max(sub_curr_scores)
 
-        return curr_scores_ls
+        return curr_scores_ls, selected_patch_ids_ls[torch.argmax(sub_curr_scores).item()]
 
 
 def compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, prob_agg = "prod", is_img_retrieval=False, dependency_topk=50, valid_patch_ids=None):
@@ -528,29 +610,34 @@ class MaxFlashArray:
             self._maxflash_array.append(MaxFlash(self._hash_function.num_tables(), self._hash_function.range(), num_elements, hashes, device=self._device))
         return len(self._maxflash_array) - 1
     
-    def compute_score_full(self, curr_query_embedding, sub_corpus_embeddings, algebra_method="two", prob_agg="prod", device="cuda", corpus_idx=None, grouped_sub_q_ids_ls=None, sub_q_ls_idx=None, bboxes_overlap_ls=None, query_itr=None, is_img_retrieval=False,dependency_topk=50, **kwargs):
-        if curr_query_embedding.shape[0] == 1:
-            if is_img_retrieval:
-                curr_scores_ls = dot_scores(curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
-            else:
-                curr_scores_ls = torch.max(dot_scores(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
-            curr_scores = curr_scores_ls
-            return curr_scores.item()
-        # print("prob_agg::", prob_agg)
-        # else:
-            # curr_scores_ls = torch.max(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
-        # if self.algebra_method == one or self.algebra_method == three:
-        #     curr_scores_ls = self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
-        if algebra_method == "two":
-            if is_img_retrieval:
-                curr_scores_ls = torch.max(dot_scores(curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
-            else:
-                curr_scores_ls = torch.max(dot_scores(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
-            
-            # curr_scores_ls_max_id = torch.argmax(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
+    def compute_score_full(self, curr_query_embedding, sub_corpus_embeddings, algebra_method="two", prob_agg="prod", device="cuda", corpus_idx=None, grouped_sub_q_ids_ls=None, sub_q_ls_idx=None, bboxes_overlap_ls=None, query_itr=None, is_img_retrieval=False,dependency_topk=50, all_containment_ls=None, **kwargs):
+        if algebra_method == "five":
+            curr_scores_ls, _ = processing_one_count_node(corpus_idx, curr_query_embedding.root, sub_corpus_embeddings, all_containment_ls[corpus_idx], bboxes_overlap_ls, sub_q_ls_idx, prob_agg, query_itr, device,is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
         else:
-            # curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, prob_agg = "prod", is_img_retrieval=False, dependency_topk=50, valid_patch_ids=None
-            curr_scores_ls = compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
+        
+            if curr_query_embedding.shape[0] == 1:
+                if is_img_retrieval:
+                    curr_scores_ls = dot_scores(curr_query_embedding.to(device), sub_corpus_embeddings[-1].to(device))
+                else:
+                    curr_scores_ls = torch.max(dot_scores(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
+                curr_scores = curr_scores_ls
+                return curr_scores.item()
+            # print("prob_agg::", prob_agg)
+            # else:
+                # curr_scores_ls = torch.max(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
+            # if self.algebra_method == one or self.algebra_method == three:
+            #     curr_scores_ls = self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device))#, dim=-1)
+            if algebra_method == "two":
+                if is_img_retrieval:
+                    curr_scores_ls = torch.max(dot_scores(curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
+                else:
+                    curr_scores_ls = torch.max(dot_scores(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]
+                
+                # curr_scores_ls_max_id = torch.argmax(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
+            elif algebra_method == "four":
+                # curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, prob_agg = "prod", is_img_retrieval=False, dependency_topk=50, valid_patch_ids=None
+                curr_scores_ls = compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
+            
                 # curr_scores_ls2 = torch.max(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
                 
         # else:    
@@ -587,9 +674,10 @@ class MaxFlashArray:
         return curr_scores.item()
         
     def get_document_scores(self, document_embs_ls:list, query: torch.tensor, documents_to_query: torch.tensor, method="two", query_idx=None, query_sub_idx =None, device="cuda", is_img_retrieval=False, prob_agg="sum",grouped_sub_q_ids_ls=None,bboxes_overlap_ls=None, index_method="default", **kwargs):
-        query = query.to(self._device)
+        if not method == "five":
+            query = query.to(self._device)
         
-        num_vectors_in_query = query.shape[0]
+        
         # print("query hashes::", hashes)
         def compute_score(i):
             flash_index = documents_to_query[i]
@@ -597,6 +685,7 @@ class MaxFlashArray:
             if index_method == "default":
                 score = self.compute_score_full(query, document_embs_ls[flash_index].to(self._device), method, prob_agg, device, corpus_idx=flash_index,grouped_sub_q_ids_ls=grouped_sub_q_ids_ls, sub_q_ls_idx=query_sub_idx, bboxes_overlap_ls=bboxes_overlap_ls, query_itr=query_idx, is_img_retrieval=is_img_retrieval, **kwargs)
             else:
+                num_vectors_in_query = query.shape[0]
                 hashes = self.hash(query)
                 if method == "two":
                     buffer = torch.zeros(self._max_allowable_doc_size, dtype=torch.int32, device=device)
@@ -725,7 +814,7 @@ class DocRetrieval:
         
         return sum_sim #[sorted_indices]
 
-    def query_multi_queries(self, document_embs_ls, query_embedding_ls, top_k: int, num_to_rerank: int, prob_agg="prod", dataset_name="", **kwargs):
+    def query_multi_queries(self, document_embs_ls, query_embedding_ls, top_k: int, num_to_rerank: int, prob_agg="prod", dataset_name="", method="two", **kwargs):
         all_cos_scores = []
         query_ids = [str(idx+1) for idx in list(range(len(query_embedding_ls)))]
         corpus_ids = [str(idx+1) for idx in list(range(len(self._document_array._maxflash_array)))]
@@ -736,11 +825,16 @@ class DocRetrieval:
         expected_idx_ls = []
         for idx in tqdm(range(query_count)): #, desc="Querying":
             cos_scores_ls=[]
-            sample_ids = self.query(document_embs_ls, torch.cat(query_embedding_ls[idx], dim=0), top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, **kwargs)
+            if not method == "five":
+                sample_ids = self.query(document_embs_ls, torch.cat(query_embedding_ls[idx], dim=0), top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, method=method, **kwargs)
+            else:
+                full_sub_query_embeddings = torch.cat([query_embedding_ls[idx][sub_idx].obtain_leaf_node_features() for sub_idx in range(len(query_embedding_ls[idx]))])
+                
+                sample_ids = self.query(document_embs_ls,full_sub_query_embeddings, top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, method=method, **kwargs)
             
             for sub_idx in range(len(query_embedding_ls[idx])):
                 # top_k_internal_ids, document_embs_ls:list, embeddings: torch.tensor, method="two", prob_agg="prod", **kwargs
-                cos_scores = self.compute_scores_single_query(sample_ids, document_embs_ls, query_embedding_ls[idx][sub_idx], prob_agg=prob_agg, query_idx=idx, query_sub_idx =sub_idx, **kwargs)
+                cos_scores = self.compute_scores_single_query(sample_ids, document_embs_ls, query_embedding_ls[idx][sub_idx], prob_agg=prob_agg, query_idx=idx, query_sub_idx =sub_idx, method=method, **kwargs)
                 # cos_scores_ls.append(cos_scores)
                 # if sub_idx == 0:
                 #     # print(idx, idx in sample_ids, sample_ids)

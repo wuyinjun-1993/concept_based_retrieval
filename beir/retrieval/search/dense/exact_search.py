@@ -271,7 +271,7 @@ class DenseRetrievalExactSearch:
     #         self.processing_one_count_node(count_node, image_patch_embeddings, image_containment_list, all_neighbors_list, agg_method, dependency_topk, all_containment_ls=all_containment_ls)
         
 
-    def processing_one_count_node(self, corpus_idx, score_function, head_count_node, image_patch_embeddings, image_containment_list, bboxes_overlap_ls, sub_q_ls_idx, agg_method, query_itr, device):
+    def processing_one_count_node(self, corpus_idx, score_function, head_count_node, image_patch_embeddings, image_containment_list, bboxes_overlap_ls, sub_q_ls_idx, agg_method, query_itr, device, valid_idx=None):
         CNT = head_count_node.tgt_count
         all_count_nodes = []
         all_plain_nodes = []
@@ -295,7 +295,7 @@ class DenseRetrievalExactSearch:
                 # if (len(dependency_list) > 0):
                     # compute_dependency_aware_sim_score0(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, valid_patch_ids=None)
                     # corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr
-                sim_1, matched_segs = self.compute_dependency_aware_sim_score0(subquery_str_list, image_patch_embeddings, corpus_idx, score_function, [None], 0, device, bboxes_overlap_ls, 0, invalid_indices=invalid_indices)#all_neighbors_list, agg_method, invalid_indices)
+                sim_1, matched_segs = self.compute_dependency_aware_sim_score0(subquery_str_list, image_patch_embeddings, corpus_idx, score_function, [None], 0, device, bboxes_overlap_ls, 0, invalid_indices=invalid_indices, valid_patch_ids=valid_idx)#all_neighbors_list, agg_method, invalid_indices)
             else:
                 if agg_method == 'sum':
                     sim_1 = 0
@@ -319,7 +319,7 @@ class DenseRetrievalExactSearch:
             while all_count_nodes:
                 count_node = all_count_nodes.pop(0)
                 # make sure image_patch_embeddings only contains valid patches !!!!
-                sim_2, matched_segs = self.processing_one_count_node(corpus_idx, score_function, count_node, image_patch_embeddings, image_containment_list, bboxes_overlap_ls, sub_q_ls_idx,agg_method, query_itr, device)
+                sim_2, matched_segs = self.processing_one_count_node(corpus_idx, score_function, count_node, image_patch_embeddings, image_containment_list, bboxes_overlap_ls, sub_q_ls_idx,agg_method, query_itr, device, valid_idx)
                 Match_Seg_ls.extend(matched_segs)
                 if agg_method == 'sum':
                     sim_1 = sim_1 + sim_2
@@ -336,7 +336,10 @@ class DenseRetrievalExactSearch:
             unique_matched_indices.extend(close_neighbors)
             invalid_indices.extend(list(set(unique_matched_indices)))
             #print(invalid_indices)
-
+            if valid_idx is None:
+                valid_idx = torch.tensor(list(set(range(len(image_patch_embeddings))).difference(invalid_indices)))
+            else:
+                valid_idx = torch.tensor(list(set(range(len(image_patch_embeddings))).difference(invalid_indices)).intersection(valid_idx))
         # Final aggregation over all groups
         final_score = 0
         SIM_ls = torch.tensor(SIM_ls)

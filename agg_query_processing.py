@@ -1,3 +1,4 @@
+import torch
 class TreeNode:
     def __init__(self, node_id, value, node_type, tgt_count):
         self.node_id = node_id
@@ -51,7 +52,36 @@ class Tree:
           # path.pop()
       dfs(self.root)
       # return paths
-      
+    
+    def obtain_leaf_node_features(self):
+        leaf_results = []
+        
+        def dfs(node):
+            if not node:
+                return
+            
+            # Check if the node is a leaf (has no children)
+            if not node.children:
+                leaf_results.append(node.text_features)
+            else:
+                # Traverse through the children if not a leaf node
+                for child in node.children:
+                    dfs(child)
+
+        # Start DFS from the root to collect results
+        dfs(self.root)
+        return torch.cat(leaf_results)
+    
+    # def obtain_leaf_node_features(self):
+    #     def dfs(node):
+    #         if not node:
+    #             return
+    #         if not node.children:
+    #             return node.text_features
+    #         else:
+    #             for child in node.children:
+    #                 return dfs(child)
+    #     return dfs(self.root)
         
         
         
