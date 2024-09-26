@@ -373,7 +373,7 @@ if __name__ == "__main__":
     # , bboxes_ls=bboxes_ls, img_file_name_ls=img_file_name_ls, bboxes_overlap_ls=bboxes_overlap_ls, grouped_sub_q_ids_ls=grouped_sub_q_ids_ls
     
     if args.dataset_name == "flickr":
-        queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls = load_flickr_dataset_full(full_data_path, full_data_path, subset_img_id=args.subset_img_id, algebra_method=args.algebra_method)
+        queries, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls = load_flickr_dataset_full0(full_data_path, full_data_path, subset_img_id=args.subset_img_id, algebra_method=args.algebra_method)
         
         img_idx_ls, img_file_name_ls = load_other_flickr_images(full_data_path, query_path, img_idx_ls, img_file_name_ls, total_count = args.total_count)
         
@@ -616,9 +616,11 @@ if __name__ == "__main__":
     
     if args.is_img_retrieval:
         samples_hash = obtain_sample_hash(img_idx_ls, img_file_name_ls)
+        print("sample hash::", samples_hash)
         # cached_img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
         # if args.save_mask_bbox:
         cached_img_ls, img_emb, patch_emb_ls, _, bboxes_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, samples_hash, model, img_file_name_ls, img_idx_ls, processor, device, patch_count_ls=patch_count_ls,save_mask_bbox=args.save_mask_bbox)
+        print("img embedding size::", img_emb.shape)
         # else:
         #     cached_img_ls, img_emb, patch_emb_ls, img_per_patch_ls = convert_samples_to_concepts_img(args, samples_hash, model, img_file_name_ls, img_idx_ls, processor, device, patch_count_ls=patch_count_ls,save_mask_bbox=args.save_mask_bbox)
             

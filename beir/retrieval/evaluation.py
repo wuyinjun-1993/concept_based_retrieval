@@ -56,7 +56,7 @@ class EvaluateRetrieval:
     def evaluate(qrels: Dict[str, Dict[str, int]], 
                  results: Dict[str, Dict[str, float]], 
                  k_values: List[int],
-                 ignore_identical_ids: bool=True) -> Tuple[Dict[str, float], Dict[str, float], Dict[str, float], Dict[str, float]]:
+                 ignore_identical_ids: bool=True, need_logging:bool=True) -> Tuple[Dict[str, float], Dict[str, float], Dict[str, float], Dict[str, float]]:
         
         if ignore_identical_ids:
             logging.info('For evaluation, we ignore identical query and document ids (default), please explicitly set ``ignore_identical_ids=False`` to ignore this.')
@@ -98,10 +98,11 @@ class EvaluateRetrieval:
             recall[f"Recall@{k}"] = round(recall[f"Recall@{k}"]/len(scores), 5)
             precision[f"P@{k}"] = round(precision[f"P@{k}"]/len(scores), 5)
         
-        for eval in [ndcg, _map, recall, precision]:
-            logging.info("\n")
-            for k in eval.keys():
-                logging.info("{}: {:.4f}".format(k, eval[k]))
+        if need_logging:
+            for eval in [ndcg, _map, recall, precision]:
+                logging.info("\n")
+                for k in eval.keys():
+                    logging.info("{}: {:.4f}".format(k, eval[k]))
 
         return ndcg, _map, recall, precision
     

@@ -20,6 +20,12 @@ import pandas as pd
 from scipy.stats import percentileofscore
 from collections import defaultdict
 
+import json
+
+def store_json_results(results, output_name):
+    with open(output_name, "w") as f:
+        json.dump(results, f, indent=4)
+
 def obtain_key_words(query):
     client = OpenAI(
         # This is the default and can be omitted
@@ -437,6 +443,15 @@ def retrieve_by_embeddings(perc_method, full_sub_queries_ls, queries, retriever,
     
     print("Overall scores:")
     ndcg, _map, recall, precision = retriever.evaluate(qrels, results, retriever.k_values, ignore_identical_ids=False)
+    
+    if len(results) > 1:
+    
+        for key in tqdm(results):
+            ndcg, _map, recall, precision = retriever.evaluate({key: qrels[key]}, {key:results[key]}, retriever.k_values, ignore_identical_ids=False, need_logging=False)
+            store_json_results(ndcg, os.path.join("output/", f"{dataset_name}_{key}_ndcg.json"))
+            store_json_results(_map, os.path.join("output/", f"{dataset_name}_{key}_map.json"))
+            store_json_results(recall, os.path.join("output/", f"{dataset_name}_{key}_recall.json"))
+            store_json_results(precision, os.path.join("output/", f"{dataset_name}_{key}_precision.json"))
     
     return results
 
