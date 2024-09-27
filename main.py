@@ -596,7 +596,7 @@ if __name__ == "__main__":
                 # patch_count_ls = [4, 8, 16, 64, 128]
                 patch_count_ls = [4, 8, 16, 64]
             elif args.dataset_name.startswith("flickr"):
-                patch_count_ls = [4, 16]
+                patch_count_ls = [4, 8, 16, 64]
             else:
                 patch_count_ls = [4, 8, 16, 64]
                 

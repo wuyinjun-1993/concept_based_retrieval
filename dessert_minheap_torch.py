@@ -62,7 +62,7 @@ def processing_one_count_node(corpus_idx, head_count_node, image_patch_embedding
                     # corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr
                 # compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
                 local_dependency = [None]
-                local_dependency = [[[[idx] for idx in range(len(subquery_str_list))]]]
+                # local_dependency = [[[[idx] for idx in range(len(subquery_str_list))]]]
                 sim_1, matched_segs = compute_dependency_aware_sim_score0(subquery_str_list, image_patch_embeddings, corpus_idx, local_dependency, 0, device, bboxes_overlap_ls, 0, invalid_indices=invalid_indices,is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk, valid_patch_ids=valid_idx)#all_neighbors_list, agg_method, invalid_indices)
             else:
                 if agg_method == 'sum':
@@ -852,10 +852,10 @@ class DocRetrieval:
             else:
                 full_sub_query_embeddings = torch.cat([query_embedding_ls[idx][sub_idx].obtain_leaf_node_features() for sub_idx in range(len(query_embedding_ls[idx]))])
                 full_sub_query_embeddings = torch.nn.functional.normalize(full_sub_query_embeddings, p=2, dim=1)
-                # sample_ids = self.query(document_embs_ls,full_sub_query_embeddings, top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, method=method, **kwargs)
+                sample_ids = self.query(document_embs_ls,full_sub_query_embeddings, top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, method=method, **kwargs)
                 # full_sub_query_embeddings = query_embedding_ls[idx][-1].obtain_leaf_node_features()
                 # sample_ids = torch.topk(dot_scores(full_sub_query_embeddings, img_embeds), k=num_to_rerank)[1].view(-1)
-                sample_ids = self.query(img_embeds,full_sub_query_embeddings, top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, method=method, **kwargs)
+                # sample_ids = self.query(img_embeds,full_sub_query_embeddings, top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, method=method, **kwargs)
                             
             for sub_idx in range(len(query_embedding_ls[idx])):
                 # if sub_idx < len(query_embedding_ls[idx]) - 1:

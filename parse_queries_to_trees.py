@@ -147,6 +147,93 @@ def parse_nodes(input_string):
 
 
 # Recursive function to build the tree
+# def build_tree(parsed_nodes, node_id=0, node_counter=None):
+#     # Initialize the node counter if it's the first call
+#     if node_counter is None:
+#         node_counter = [max(parsed_nodes.keys()) + 1]  # Start with the next available node ID
+
+#     # Find the node in the parsed_nodes dictionary
+#     node_data = parsed_nodes.get(node_id)
+
+#     query = node_data['Query']
+#     tgt_count = node_data['Target Count']
+#     children_ids = node_data['Children']
+
+#     # Create a list to hold the nodes for this part of the tree
+#     nodes = []
+
+#     if isinstance(query, list):
+#         # If the query is a list of subqueries, create a node for each subquery
+#         for subquery in query:
+#             # Assign a new node ID for each subquery
+#             new_node_id = node_counter[0]
+#             node_counter[0] += 1  # Increment the global counter
+#             subquery_node = TreeNode(new_node_id, subquery, 'plain', 1)  # Create a plain node for each subquery
+#             nodes.append(subquery_node)  # Add this subquery node to the list
+#     else:
+#         # If it's a single query, create the appropriate type of node
+#         if node_id == 0:
+#             node = TreeNode(node_id, query, 'root', tgt_count)
+#             nodes.append(node)
+#         elif tgt_count > 1:
+#             node = TreeNode(node_id, query, 'count', tgt_count)
+#             nodes.append(node)
+#         elif tgt_count == 1:
+#             node = TreeNode(node_id, query, 'plain', 1)
+#             nodes.append(node)
+
+#     # Recursively add child nodes
+#     for child_id in children_ids:
+#         child_nodes = build_tree(parsed_nodes, child_id, node_counter)  # Pass the global counter
+#         if isinstance(child_nodes, TreeNode):
+#             # If only one node is returned, append it as a child
+#             nodes[0].children.append(child_nodes)
+#         else:
+#             # If a list of nodes is returned, extend the current node's children with them
+#             nodes[0].children.extend(child_nodes)
+
+#     if len(nodes) == 1:
+#         return nodes[0]  # Return the single node if that's all there is
+#     return nodes  # Return the list of nodes
+
+# input_string = "(0){Q = Several women are gather around a table in a corner surrounded by bookshelves.-><1,2,>} (1) {One woman is gather around a table [2]-><3,>} (2) { | a table in a corner [1]| a table surrounded by bookshelves.[1] } (3) { One woman is gather around a table [1] }"
+
+# input_string="(0){Two young guys with shaggy hair look at their hands while hanging out in the yard.-><1,> } (1){One young guy with shaggy hair looks at his hands while hanging out in the yard. [2]-><2,> } (2) { One young guy with shaggy hair [1]| One young guy looks at his hands [1]| One young guy is hanging out in the yard. [1] }"
+
+# parsed_nodes = parse_nodes(input_string)
+
+
+# root = build_tree(parsed_nodes, 0)
+# tree = Tree(root)
+# print()
+
+
+# def construct_tree_from_string(input_string):
+#     parsed_nodes = parse_nodes(input_string)
+#     root = build_tree(parsed_nodes, 0)
+#     tree = Tree(root)
+#     return tree
+
+# def output_tree_list(text_file_path):
+#   with open(text_file_path, 'r') as file:
+#     txt = file.read()
+#   tree_strings = txt.split('\n')
+#   tree_strings_cleaned = []
+#   for tree_string in tree_strings:
+#     tree_string = tree_string.strip()
+#     if tree_string:
+#         tree_strings_cleaned.append(tree_string)
+#   output_tree_list = []
+#   for i in range(0, len(tree_strings_cleaned)):
+#     print(i)
+#     input_string = tree_strings_cleaned[i]
+#     print(input_string)
+#     tree = construct_tree_from_string(input_string)
+#     tree.display(tree.root)
+#     output_tree_list.append(tree)
+#   return output_tree_list
+
+
 def build_tree(parsed_nodes, node_id=0, node_counter=None):
     # Initialize the node counter if it's the first call
     if node_counter is None:
@@ -175,10 +262,10 @@ def build_tree(parsed_nodes, node_id=0, node_counter=None):
         if node_id == 0:
             node = TreeNode(node_id, query, 'root', tgt_count)
             nodes.append(node)
-        elif tgt_count > 1:
+        elif len(children_ids) > 0:
             node = TreeNode(node_id, query, 'count', tgt_count)
             nodes.append(node)
-        elif tgt_count == 1:
+        elif len(children_ids) == 0:
             node = TreeNode(node_id, query, 'plain', 1)
             nodes.append(node)
 
@@ -196,18 +283,6 @@ def build_tree(parsed_nodes, node_id=0, node_counter=None):
         return nodes[0]  # Return the single node if that's all there is
     return nodes  # Return the list of nodes
 
-# input_string = "(0){Q = Several women are gather around a table in a corner surrounded by bookshelves.-><1,2,>} (1) {One woman is gather around a table [2]-><3,>} (2) { | a table in a corner [1]| a table surrounded by bookshelves.[1] } (3) { One woman is gather around a table [1] }"
-
-# input_string="(0){Two young guys with shaggy hair look at their hands while hanging out in the yard.-><1,> } (1){One young guy with shaggy hair looks at his hands while hanging out in the yard. [2]-><2,> } (2) { One young guy with shaggy hair [1]| One young guy looks at his hands [1]| One young guy is hanging out in the yard. [1] }"
-
-# parsed_nodes = parse_nodes(input_string)
-
-
-# root = build_tree(parsed_nodes, 0)
-# tree = Tree(root)
-# print()
-
-
 def construct_tree_from_string(input_string):
     parsed_nodes = parse_nodes(input_string)
     root = build_tree(parsed_nodes, 0)
@@ -215,20 +290,20 @@ def construct_tree_from_string(input_string):
     return tree
 
 def output_tree_list(text_file_path):
-  with open(text_file_path, 'r') as file:
-    txt = file.read()
-  tree_strings = txt.split('\n')
-  tree_strings_cleaned = []
-  for tree_string in tree_strings:
-    tree_string = tree_string.strip()
-    if tree_string:
-        tree_strings_cleaned.append(tree_string)
-  output_tree_list = []
-  for i in range(0, len(tree_strings_cleaned)):
-    print(i)
-    input_string = tree_strings_cleaned[i]
-    print(input_string)
-    tree = construct_tree_from_string(input_string)
-    tree.display(tree.root)
-    output_tree_list.append(tree)
-  return output_tree_list
+    with open(text_file_path, 'r') as file:
+        txt = file.read()
+    tree_strings = txt.split('\n')
+    tree_strings_cleaned = []
+    for tree_string in tree_strings:
+        tree_string = tree_string.strip()
+        if tree_string:
+            tree_strings_cleaned.append(tree_string)
+    output_tree_list = []
+    for i in range(0, len(tree_strings_cleaned)):
+        #print(i)
+        input_string = tree_strings_cleaned[i]
+        #print(input_string)
+        tree = construct_tree_from_string(input_string)
+        #tree.display(tree.root)
+        output_tree_list.append(tree)
+    return output_tree_list

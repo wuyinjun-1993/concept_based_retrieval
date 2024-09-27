@@ -53,7 +53,7 @@ def generate_all_containment_list(all_bboxes_ls):
     for bboxes_ls in tqdm(all_bboxes_ls):
         all_valid_bboxes_list_11 = []
         all_valid_bboxes_list_11.append(bboxes_ls)
-        containment_list = generate_containment_list(0.9, all_valid_bboxes_list_11)[0]
+        containment_list = generate_containment_list(0.6, all_valid_bboxes_list_11)[0]
         all_containment_ls.append(containment_list)
     return all_containment_ls
 
