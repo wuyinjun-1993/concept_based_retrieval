@@ -5,6 +5,8 @@ class TreeNode:
         self.node_type = node_type
         self.subquery_string = value
         self.tgt_count = tgt_count
+        if tgt_count is None:
+            self.tgt_count = 1
         self.children = []
 
 
@@ -23,6 +25,11 @@ class TreeNode:
 class Tree:
     def __init__(self, root):
         self.root = root
+        
+    def check_only_node(self):
+        if len(self.root.children) == 1 and len(self.root.children[0].children) <= 0:
+            return True
+        return False
 
     def add_child(self, parent, child):
         parent.children.append(child)

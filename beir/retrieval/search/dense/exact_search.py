@@ -119,7 +119,7 @@ class DenseRetrievalExactSearch:
         
         if len(curr_sub_corpus_embeddings) <= 0:
             return torch.tensor([0], device=device)
-            
+        full_selected_patch_ids_ls = []
         for curr_grouped_sub_q_ids in curr_grouped_sub_q_ids_ls:
             
             selected_embedding_idx = torch.arange(curr_sub_corpus_embeddings.shape[0])
@@ -177,7 +177,9 @@ class DenseRetrievalExactSearch:
             else:
                 curr_scores_ls += torch.max(sub_curr_scores)
                 
-        return curr_scores_ls, selected_patch_ids_ls[torch.argmax(sub_curr_scores).item()]
+            full_selected_patch_ids_ls.extend(selected_patch_ids_ls[torch.argmax(sub_curr_scores).item()])
+                
+        return curr_scores_ls, full_selected_patch_ids_ls
     
     # @profile
     def compute_dependency_aware_sim_score(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, valid_patch_ids=None):
@@ -556,14 +558,14 @@ class DenseRetrievalExactSearch:
             
             # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
             if self.prob_agg == "prod":
-                all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
+                all_cos_scores_tensor = all_cos_scores_tensor/(torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True) + 1e-6)
                 all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
             else:
                 if dataset_name == "trec-covid":
-                    all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
+                    all_cos_scores_tensor = all_cos_scores_tensor/(torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True) + 1e-6)
                     all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
                 else:
-                    all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
+                    all_cos_scores_tensor = all_cos_scores_tensor/(torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True) + 1e-6)
                     all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
             print(all_cos_scores_tensor)
         

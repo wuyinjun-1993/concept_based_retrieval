@@ -33,7 +33,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 from transformers import AutoTokenizer, BitsAndBytesConfig
-
+from parse_queries_to_trees import *
 from agg_query_processing import Tree, TreeNode
 # from llava.model import LlavaLlamaForCausalLM
 # import torch
@@ -442,6 +442,7 @@ def load_flickr_dataset_full0(data_path, query_path, subset_img_id=None, redecom
     # selected_filename = "1000366164.jpg"
     sub_caption_ls = []
     all_grouped_sub_q_ids_ls = [None]
+    query_count=50
     if subset_img_id is not None:
     
         selected_img_idx = subset_img_id #df[df['filename'] == selected_filename].index[0]
@@ -464,11 +465,52 @@ def load_flickr_dataset_full0(data_path, query_path, subset_img_id=None, redecom
         
         # img_idx_ls = [df.iloc[11]['filename']]
         img_idx_ls = [origin_file_idx]
+        
+        if algebra_method == "five":
+        
+            decomposed_res_file = os.path.join(data_path, "flickr_500_result.txt")
+            sub_caption_ls = []
+            line_idx = 0
+            
+            root = TreeNode(0, 'Two young guys with shaggy hair look at their hands while hanging out in the yard.', 'root', 1)
+            # child1 = TreeNode(1, 'One young guys with shaggy hair look at their hands while hanging out in the yard.', 'count', 2)
+            child1 = TreeNode(1, 'Two young guys with shaggy hair', 'plain', 1)
+            child2 = TreeNode(2, 'Two young guy looks at his hands', 'plain', 1)
+            child3 = TreeNode(3, 'Two young guy hanging out in the yard', 'plain', 1)
+            tree = Tree(root)
+            tree.add_child(root, child1)
+            tree.add_child(root, child2)
+            tree.add_child(root, child3)
+            # tree_11.add_child(child1, child4)
+            
+            # with open(decomposed_res_file, 'r') as f:
+            #     for line in f:
+                    
+
+            #         # parsed_nodes = parse_nodes(line)
+            #         # root = build_tree(parsed_nodes, 0)
+            #         # tree = Tree(root)
+
+            #         # tree_11.display(tree_11.root)
+                    
+            #         if line_idx == subset_img_id:
+            #             tree = construct_tree_from_string(line)
+            sub_caption_ls.append([tree])
+            #             break
+            #         line_idx += 1
+            all_grouped_sub_q_ids_ls = [None]
+        else:
+            # sub_caption_ls = [['A young woman wearing sneakers.', 'A young woman leaping in midair at the top of a flight of concrete stairs.', 'Three young men wearing sneakers.', 'Three young men leaping in midair at the top of a flight of concrete stairs.']]
+            sub_caption_ls = [[['One young guy with shaggy hair', 'One young guy looks at his hands', 'One young guy is hanging out in the yard']]]
+            # sub_caption_ls = [["Two women, both wearing glasses","Two women are playing clarinets","an elderly woman is playing a stringed instrument"]]
+            # sub_caption_ls = [[[full_query]]]
+            # all_grouped_sub_q_ids_ls = [[[0,1], [2,3]]]
+            all_grouped_sub_q_ids_ls = [None]
     else:
         img_file_name_ls = []
         img_idx_ls = []
         caption_ls = []
-        for selected_img_idx in range(len(query_df)):
+        for selected_img_idx in range(query_count):
             image_path_11 = os.path.join(data_path, "flickr30k-images/") + query_df.iloc[selected_img_idx]['filename']
             origin_file_idx = df[df['filename'] == query_df.iloc[selected_img_idx]['filename']].index[0]
             full_query = query_df.iloc[selected_img_idx]['choose']
@@ -476,31 +518,63 @@ def load_flickr_dataset_full0(data_path, query_path, subset_img_id=None, redecom
             img_file_name_ls.append(image_path_11)
             caption_ls.append(full_query)
         
-    if algebra_method == "five":
-    
-        root = TreeNode(0, full_query, 'root', 1)
+        if algebra_method == "five":
+        
+            decomposed_res_file = os.path.join(data_path, "flickr_500_result.txt")
+            sub_caption_ls = []
+            with open(decomposed_res_file, 'r') as f:
+                for line in f:
+                    tree = construct_tree_from_string(line)
+
+                    # parsed_nodes = parse_nodes(line)
+                    # root = build_tree(parsed_nodes, 0)
+                    # tree = Tree(root)
+
+                    # tree_11.display(tree_11.root)
+                    sub_caption_ls.append([tree])
+                    if len(sub_caption_ls) == query_count:
+                        break
+            all_grouped_sub_q_ids_ls = [None]
+        else:
+            decomposed_res_file = os.path.join(data_path, "flickr_500_simple_decompose_result.txt")
+            sub_caption_ls = []
+            with open(decomposed_res_file, 'r') as f:
+                for line in f:
+                    sub_caption_ls.append([line.strip().split("|")])
+                    if len(sub_caption_ls) == query_count:
+                        break
+            
+            
+            # sub_caption_ls = [['A young woman wearing sneakers.', 'A young woman leaping in midair at the top of a flight of concrete stairs.', 'Three young men wearing sneakers.', 'Three young men leaping in midair at the top of a flight of concrete stairs.']]
+            # sub_caption_ls = [[['One young guy with shaggy hair', 'One young guy looks at his hands', 'One young guy is hanging out in the yard']]]
+            # sub_caption_ls = [["Two women, both wearing glasses","Two women are playing clarinets","an elderly woman is playing a stringed instrument"]]
+            # sub_caption_ls = [[[full_query]]]#[["Two young guys with shaggy hair| guys look at their hands| guys hanging out in the yard."]]
+            # all_grouped_sub_q_ids_ls = [[[0,1], [2,3]]]
+            all_grouped_sub_q_ids_ls = [None]
+
+        # root = TreeNode(0, full_query, 'root', 1)
         # Two women, both wearing glasses, are playing clarinets and an elderly woman is playing a stringed instrument.
         # child1 = TreeNode(1, 'Two women, both wearing glasses, are playing clarinets', 'count', 2)
         # child2 = TreeNode(2, 'One women wearing glasses', 'plain', 1)
         # child3 = TreeNode(3, 'One women is playing clarinets', 'plain', 1)
         # child4 = TreeNode(4, 'an elderly woman is playing a stringed instrument', 'plain', 1)
         
+        # # tree_11 = Tree(root)
+        # # tree_11.add_child(root, child1)
+        # # tree_11.add_child(root, child4)
+        # # tree_11.add_child(child1, child2)
+        # # tree_11.add_child(child1, child3)
+        
+        # # Several men in hard hats are operating a giant pulley system.
+        # child1 = TreeNode(1, 'One man in hard hats are operating a giant pulley system', 'count', 2)
+        # child2 = TreeNode(2, 'One man in hard hats', 'plain', 1)
+        # child3 = TreeNode(3, 'One man is operating a giant pulley system', 'plain', 1)
+        # # child4 = TreeNode(4, 'one men standing near a stove', 'plain', 1)
+        
         # tree_11 = Tree(root)
         # tree_11.add_child(root, child1)
-        # tree_11.add_child(root, child4)
         # tree_11.add_child(child1, child2)
         # tree_11.add_child(child1, child3)
-        
-        # Several men in hard hats are operating a giant pulley system.
-        child1 = TreeNode(1, 'One man in hard hats are operating a giant pulley system', 'count', 2)
-        child2 = TreeNode(2, 'One man in hard hats', 'plain', 1)
-        child3 = TreeNode(3, 'One man is operating a giant pulley system', 'plain', 1)
-        # child4 = TreeNode(4, 'one men standing near a stove', 'plain', 1)
-        
-        tree_11 = Tree(root)
-        tree_11.add_child(root, child1)
-        tree_11.add_child(child1, child2)
-        tree_11.add_child(child1, child3)
         # tree_11.add_child(child3, child4)
         # tree_11.add_child(child1, child3)
     
@@ -553,17 +627,9 @@ def load_flickr_dataset_full0(data_path, query_path, subset_img_id=None, redecom
         
         
     #     # Display the tree
-        tree_11.display(tree_11.root)
-        sub_caption_ls = [[tree_11]]
-        all_grouped_sub_q_ids_ls = [None]
-    else:
-        # sub_caption_ls = [['A young woman wearing sneakers.', 'A young woman leaping in midair at the top of a flight of concrete stairs.', 'Three young men wearing sneakers.', 'Three young men leaping in midair at the top of a flight of concrete stairs.']]
-        # sub_caption_ls = [['Two young guys with shaggy hair', 'Two young guy looks at his hands', 'Two young guy hanging out in the yard']]
-        # sub_caption_ls = [["Two women, both wearing glasses","Two women are playing clarinets","an elderly woman is playing a stringed instrument"]]
-        sub_caption_ls = [['One man in a gray shirt','One man in a black shirt',"an elderly woman is playing a stringed instrument"]]
-        # all_grouped_sub_q_ids_ls = [[[0,1], [2,3]]]
-        all_grouped_sub_q_ids_ls = [None]
-    
+        # tree_11.display(tree_11.root)
+        # sub_caption_ls = [[tree_11]]
+        # all_grouped_sub_q_ids_ls = [None]    
     # caption_ls = ["Two young guys with shaggy hair look at their hands while hanging out in the yard."]
     
     

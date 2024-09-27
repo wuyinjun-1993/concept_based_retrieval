@@ -61,7 +61,9 @@ def processing_one_count_node(corpus_idx, head_count_node, image_patch_embedding
                     # compute_dependency_aware_sim_score0(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, valid_patch_ids=None)
                     # corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr
                 # compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
-                sim_1, matched_segs = compute_dependency_aware_sim_score0(subquery_str_list, image_patch_embeddings, corpus_idx, [None], 0, device, bboxes_overlap_ls, 0, invalid_indices=invalid_indices,is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk, valid_patch_ids=valid_idx)#all_neighbors_list, agg_method, invalid_indices)
+                local_dependency = [None]
+                local_dependency = [[[[idx] for idx in range(len(subquery_str_list))]]]
+                sim_1, matched_segs = compute_dependency_aware_sim_score0(subquery_str_list, image_patch_embeddings, corpus_idx, local_dependency, 0, device, bboxes_overlap_ls, 0, invalid_indices=invalid_indices,is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk, valid_patch_ids=valid_idx)#all_neighbors_list, agg_method, invalid_indices)
             else:
                 if agg_method == 'sum':
                     sim_1 = 0
@@ -133,6 +135,7 @@ def compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddi
             curr_sub_corpus_embeddings = sub_corpus_embeddings[0:-1]
         else:
             curr_sub_corpus_embeddings = sub_corpus_embeddings
+        full_selected_patch_ids_ls = []
         for curr_grouped_sub_q_ids in curr_grouped_sub_q_ids_ls:
 
             selected_embedding_idx = torch.arange(curr_sub_corpus_embeddings.shape[0])
@@ -190,8 +193,10 @@ def compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddi
                 assert torch.all(curr_scores_ls >= 0).item()
             else:
                 curr_scores_ls += torch.max(sub_curr_scores)
+                
+            full_selected_patch_ids_ls.extend(selected_patch_ids_ls[torch.argmax(sub_curr_scores).item()])
 
-        return curr_scores_ls, selected_patch_ids_ls[torch.argmax(sub_curr_scores).item()]
+        return curr_scores_ls, full_selected_patch_ids_ls
 
 
 def compute_dependency_aware_sim_score(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, prob_agg = "prod", is_img_retrieval=False, dependency_topk=50, valid_patch_ids=None):
@@ -618,6 +623,14 @@ class MaxFlashArray:
     
     def compute_score_full(self, curr_query_embedding, sub_corpus_embeddings, algebra_method="two", prob_agg="prod", device="cuda", corpus_idx=None, grouped_sub_q_ids_ls=None, sub_q_ls_idx=None, bboxes_overlap_ls=None, query_itr=None, is_img_retrieval=False,dependency_topk=50, all_containment_ls=None, **kwargs):
         if algebra_method == "five":
+            if curr_query_embedding.check_only_node():
+                this_embedding = torch.cat([node.text_features for node in curr_query_embedding.root.children])
+                if is_img_retrieval:
+                    curr_scores_ls = dot_scores(this_embedding.to(device), sub_corpus_embeddings[-1].to(device))
+                else:
+                    curr_scores_ls = torch.max(dot_scores(this_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
+                curr_scores = curr_scores_ls
+                return curr_scores.item()
             curr_scores_ls, _ = processing_one_count_node(corpus_idx, curr_query_embedding.root, sub_corpus_embeddings, all_containment_ls[corpus_idx], bboxes_overlap_ls, sub_q_ls_idx, prob_agg, query_itr, device,is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
         else:
         
@@ -828,25 +841,47 @@ class DocRetrieval:
         query_count = len(query_embedding_ls)
         
         all_cos_scores_tensor = torch.zeros(query_count, len(query_embedding_ls[0]), len(corpus_ids))
+        bool_tensor = torch.zeros(query_count)
+        
         expected_idx_ls = []
+        img_embeds = torch.stack([document_embs_ls[xx][-1] for xx in range(len(document_embs_ls))]).cuda()
         for idx in tqdm(range(query_count)): #, desc="Querying":
             cos_scores_ls=[]
             if not method == "five":
                 sample_ids = self.query(document_embs_ls, torch.cat(query_embedding_ls[idx], dim=0), top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, method=method, **kwargs)
             else:
                 full_sub_query_embeddings = torch.cat([query_embedding_ls[idx][sub_idx].obtain_leaf_node_features() for sub_idx in range(len(query_embedding_ls[idx]))])
-                
-                sample_ids = self.query(document_embs_ls,full_sub_query_embeddings, top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, method=method, **kwargs)
-            
+                full_sub_query_embeddings = torch.nn.functional.normalize(full_sub_query_embeddings, p=2, dim=1)
+                # sample_ids = self.query(document_embs_ls,full_sub_query_embeddings, top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, method=method, **kwargs)
+                # full_sub_query_embeddings = query_embedding_ls[idx][-1].obtain_leaf_node_features()
+                # sample_ids = torch.topk(dot_scores(full_sub_query_embeddings, img_embeds), k=num_to_rerank)[1].view(-1)
+                sample_ids = self.query(img_embeds,full_sub_query_embeddings, top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, method=method, **kwargs)
+                            
             for sub_idx in range(len(query_embedding_ls[idx])):
-                # top_k_internal_ids, document_embs_ls:list, embeddings: torch.tensor, method="two", prob_agg="prod", **kwargs
-                cos_scores = self.compute_scores_single_query(sample_ids, document_embs_ls, query_embedding_ls[idx][sub_idx], prob_agg=prob_agg, query_idx=idx, query_sub_idx =sub_idx, method=method, **kwargs)
-                # cos_scores_ls.append(cos_scores)
-                # if sub_idx == 0:
-                #     # print(idx, idx in sample_ids, sample_ids)
-                #     if idx in sample_ids:
-                #         expected_idx_ls.append(idx)
-                all_cos_scores_tensor[idx, sub_idx, sample_ids] = cos_scores.cpu()
+                # if sub_idx < len(query_embedding_ls[idx]) - 1:
+                    # top_k_internal_ids, document_embs_ls:list, embeddings: torch.tensor, method="two", prob_agg="prod", **kwargs
+                    cos_scores = self.compute_scores_single_query(sample_ids, document_embs_ls, query_embedding_ls[idx][sub_idx], prob_agg=prob_agg, query_idx=idx, query_sub_idx =sub_idx, method=method, **kwargs)
+                    # cos_scores_ls.append(cos_scores)
+                    # if sub_idx == 0:
+                    #     # print(idx, idx in sample_ids, sample_ids)
+                    #     if idx in sample_ids:
+                    #         expected_idx_ls.append(idx)
+                    all_cos_scores_tensor[idx, sub_idx, sample_ids] = cos_scores.float().cpu()
+                # else:
+                #     if method == "five":
+                #         this_embedding = torch.cat([node.text_features for node in query_embedding_ls[idx][sub_idx].root.children])
+                #     else:
+                #         this_embedding = torch.cat(query_embedding_ls[idx], dim=0)
+                    
+                #     curr_sims = dot_scores(this_embedding, img_embeds).cpu()
+                    
+                #     top2_sims = torch.topk(curr_sims, k=2)[0].view(-1)
+                    
+                #     condition = (top2_sims[0] - top2_sims[1]) > 0.005
+                    
+                #     bool_tensor[idx] = condition
+                    
+                #     all_cos_scores_tensor[idx, sub_idx, :] = curr_sims
         #     cos_scores = torch.stack(cos_scores_ls)
         #     all_cos_scores.append(cos_scores)        
         # all_cos_scores_tensor = torch.stack(all_cos_scores)
@@ -854,8 +889,9 @@ class DocRetrieval:
         # 
         # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
         if prob_agg == "prod":
-            all_cos_scores_tensor = all_cos_scores_tensor/torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True)
+            all_cos_scores_tensor = all_cos_scores_tensor/(torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True) + 1e-6)
             all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+            # all_cos_scores_tensor = all_cos_scores_tensor[:,0]*(1-bool_tensor.view(-1,1)) + all_cos_scores_tensor[:,1]*bool_tensor.view(-1,1)
         else:
             # if dataset_name == "trec-covid":
                 all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
