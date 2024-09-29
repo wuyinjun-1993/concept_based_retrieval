@@ -102,7 +102,7 @@ class DenseRetrievalExactSearch:
         return valid_sample_count, valid_samples_to_patch_ids_mappings
     
     def compute_dependency_aware_sim_score0(self, curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, valid_patch_ids=None, invalid_indices=None):
-        if grouped_sub_q_ids_ls[query_itr] is not None:
+        if grouped_sub_q_ids_ls is not None or grouped_sub_q_ids_ls[query_itr] is not None:
             curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_q_ls_idx]
         else:
             curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
@@ -493,7 +493,7 @@ class DenseRetrievalExactSearch:
                                 
                                 # curr_scores_ls_max_id = torch.argmax(self.score_functions[score_function](curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
                             elif self.algebra_method == four:
-                                curr_scores_ls = self.compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr)
+                                curr_scores_ls,_ = self.compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, score_function, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr)
                             else:
                                 # corpus_idx, score_function, head_count_node, image_patch_embeddings, image_containment_list, bboxes_overlap_ls, sub_q_ls_idx, agg_method, containment_ls, query_itr
                                 curr_scores_ls, _ = self.processing_one_count_node(corpus_idx, score_function, curr_query_embedding.root, sub_corpus_embeddings, all_containment_ls[corpus_idx], bboxes_overlap_ls, sub_q_ls_idx, self.prob_agg, query_itr, device)
