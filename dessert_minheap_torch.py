@@ -121,7 +121,7 @@ def processing_one_count_node(corpus_idx, head_count_node, image_patch_embedding
 
 
 def compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, prob_agg = "prod", is_img_retrieval=False, dependency_topk=50, valid_patch_ids=None, invalid_indices=None):
-        if grouped_sub_q_ids_ls[query_itr] is not None:
+        if grouped_sub_q_ids_ls is not None and grouped_sub_q_ids_ls[query_itr] is not None:
             curr_grouped_sub_q_ids_ls = grouped_sub_q_ids_ls[query_itr][sub_q_ls_idx]
         else:
             curr_grouped_sub_q_ids_ls = [list(range(curr_query_embedding.shape[0]))]
@@ -631,7 +631,8 @@ class MaxFlashArray:
                     curr_scores_ls = torch.max(dot_scores(this_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)[0]    
                 curr_scores = curr_scores_ls
                 return curr_scores.item()
-            curr_scores_ls, _ = processing_one_count_node(corpus_idx, curr_query_embedding.root, sub_corpus_embeddings, all_containment_ls[corpus_idx], bboxes_overlap_ls, sub_q_ls_idx, prob_agg, query_itr, device,is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
+            curr_scores_ls, matched_segs = processing_one_count_node(corpus_idx, curr_query_embedding.root, sub_corpus_embeddings, all_containment_ls[corpus_idx], bboxes_overlap_ls, sub_q_ls_idx, prob_agg, query_itr, device,is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
+            assert len(matched_segs) > 0
         else:
         
             if curr_query_embedding.shape[0] == 1:
@@ -655,7 +656,7 @@ class MaxFlashArray:
                 # curr_scores_ls_max_id = torch.argmax(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings.to(device)), dim=-1)
             elif algebra_method == "four":
                 # curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, prob_agg = "prod", is_img_retrieval=False, dependency_topk=50, valid_patch_ids=None
-                curr_scores_ls = compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
+                curr_scores_ls,_ = compute_dependency_aware_sim_score0(curr_query_embedding, sub_corpus_embeddings, corpus_idx, grouped_sub_q_ids_ls, sub_q_ls_idx, device, bboxes_overlap_ls, query_itr, is_img_retrieval=is_img_retrieval, prob_agg=prob_agg, dependency_topk=dependency_topk)
             
                 # curr_scores_ls2 = torch.max(self.cos_sim(curr_query_embedding.to(device), sub_corpus_embeddings[0:-1].to(device)), dim=-1)[0]
                 
@@ -833,7 +834,7 @@ class DocRetrieval:
         
         return sum_sim #[sorted_indices]
 
-    def query_multi_queries(self, document_embs_ls, query_embedding_ls, top_k: int, num_to_rerank: int, prob_agg="prod", dataset_name="", method="two", **kwargs):
+    def query_multi_queries(self, document_embs_ls, query_embedding_ls, top_k: int, num_to_rerank: int, prob_agg="prod", dataset_name="", method="two", avg_ratio=0.1, **kwargs):
         all_cos_scores = []
         query_ids = [str(idx+1) for idx in list(range(len(query_embedding_ls)))]
         corpus_ids = [str(idx+1) for idx in list(range(len(self._document_array._maxflash_array)))]
@@ -850,7 +851,8 @@ class DocRetrieval:
             if not method == "five":
                 sample_ids = self.query(document_embs_ls, torch.cat(query_embedding_ls[idx], dim=0), top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, method=method, **kwargs)
             else:
-                full_sub_query_embeddings = torch.cat([query_embedding_ls[idx][sub_idx].obtain_leaf_node_features() for sub_idx in range(len(query_embedding_ls[idx]))])
+                full_sub_query_embeddings = torch.cat([query_embedding_ls[idx][sub_idx].obtain_leaf_node_features() for sub_idx in [1,2]]) # range(len(query_embedding_ls[idx]))])
+                # full_sub_query_embeddings = torch.cat([query_embedding_ls[idx][sub_idx].obtain_leaf_node_features() for sub_idx in range(len(query_embedding_ls[idx]))])
                 full_sub_query_embeddings = torch.nn.functional.normalize(full_sub_query_embeddings, p=2, dim=1)
                 sample_ids = self.query(document_embs_ls,full_sub_query_embeddings, top_k, num_to_rerank, prob_agg=prob_agg, query_idx=idx, method=method, **kwargs)
                 # full_sub_query_embeddings = query_embedding_ls[idx][-1].obtain_leaf_node_features()
@@ -888,9 +890,18 @@ class DocRetrieval:
 
         # 
         # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
+        print("avg_ratio::", avg_ratio)
         if prob_agg == "prod":
             all_cos_scores_tensor = all_cos_scores_tensor/(torch.sum(all_cos_scores_tensor, dim=-1, keepdim=True) + 1e-6)
-            all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+            # all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+            # all_cos_scores_tensor = (all_cos_scores_tensor[:,1] + all_cos_scores_tensor[:,2])/2
+            if method == "five":
+                all_cos_scores_tensor = torch.sum(all_cos_scores_tensor*torch.tensor([avg_ratio,0.5,0.5]).view(1,-1,1), dim=1)/torch.sum(torch.tensor([avg_ratio,0.5,0.5]))
+                # all_cos_scores_tensor = (all_cos_scores_tensor[:,0] + all_cos_scores_tensor[:,2])/2
+                # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
+            else:
+                all_cos_scores_tensor = torch.mean(all_cos_scores_tensor, dim=1)
+                # all_cos_scores_tensor = torch.max(all_cos_scores_tensor, dim=1)[0]
             # all_cos_scores_tensor = all_cos_scores_tensor[:,0]*(1-bool_tensor.view(-1,1)) + all_cos_scores_tensor[:,1]*bool_tensor.view(-1,1)
         else:
             # if dataset_name == "trec-covid":

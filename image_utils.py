@@ -27,7 +27,7 @@ import networkx as nx
 from beir.retrieval import models
 from transformers import BlipProcessor, BlipForConditionalGeneration
 
-
+import json
 
 import requests
 from PIL import Image
@@ -431,8 +431,17 @@ def load_flickr_dataset_full0(data_path, query_path, subset_img_id=None, redecom
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
     # img_caption_file_name= os.path.join(query_path, "sub_queries.csv")
+    selected_query_file_name = "flickr_500_choose.csv"
+    decomposed_res_file_name = "flickr_500_result.txt"
+    # simple_decomposed_res_file_name = "flickr_500_simple_decompose_result.txt"
+    simple_decomposed_res_file_name = "flickr_simple_decompose_result_240928.json"
+    simple_decomposed_dependency_file_name = "flickr_simple_decompose_dependency_240928.json"
+    # selected_query_file_name = "flickr_adjust.csv"
+    # decomposed_res_file_name = "flickr_adjust_result.txt"
+    # simple_decomposed_res_file_name = "flickr_adjust_simple_decompose_result.txt"
     
-    selected_query_file = os.path.join(data_path, "flickr_500_choose.csv")   
+    
+    selected_query_file = os.path.join(data_path, selected_query_file_name)   
     query_df = pd.read_csv(selected_query_file)
     df = pd.read_csv(os.path.join(data_path, 'flickr_annotations_30k.csv'))
     
@@ -442,7 +451,7 @@ def load_flickr_dataset_full0(data_path, query_path, subset_img_id=None, redecom
     # selected_filename = "1000366164.jpg"
     sub_caption_ls = []
     all_grouped_sub_q_ids_ls = [None]
-    query_count=20
+    query_count=100
     if subset_img_id is not None:
     
         selected_img_idx = subset_img_id #df[df['filename'] == selected_filename].index[0]
@@ -468,7 +477,7 @@ def load_flickr_dataset_full0(data_path, query_path, subset_img_id=None, redecom
         
         if algebra_method == "five":
         
-            decomposed_res_file = os.path.join(data_path, "flickr_500_result.txt")
+            decomposed_res_file = os.path.join(data_path, decomposed_res_file_name)
             sub_caption_ls = []
             line_idx = 0
             
@@ -518,14 +527,14 @@ def load_flickr_dataset_full0(data_path, query_path, subset_img_id=None, redecom
             sub_caption_ls.append([tree, tree2])
             #             break
             #         line_idx += 1
-            all_grouped_sub_q_ids_ls = [None]
+            all_grouped_sub_q_ids_ls = None
         else:
             # sub_caption_ls = [['A young woman wearing sneakers.', 'A young woman leaping in midair at the top of a flight of concrete stairs.', 'Three young men wearing sneakers.', 'Three young men leaping in midair at the top of a flight of concrete stairs.']]
             sub_caption_ls = [[['One young guy with shaggy hair', 'One young guy looks at his hands', 'One young guy is hanging out in the yard', 'Two young guys with shaggy hair', 'Two young guys looks at his hands', 'Two young guys is hanging out in the yard']]]
             # sub_caption_ls = [["Two women, both wearing glasses","Two women are playing clarinets","an elderly woman is playing a stringed instrument"]]
             # sub_caption_ls = [[[full_query]]]
             # all_grouped_sub_q_ids_ls = [[[0,1], [2,3]]]
-            all_grouped_sub_q_ids_ls = [None]
+            all_grouped_sub_q_ids_ls = None
     else:
         img_file_name_ls = []
         img_idx_ls = []
@@ -537,10 +546,11 @@ def load_flickr_dataset_full0(data_path, query_path, subset_img_id=None, redecom
             img_idx_ls.append(origin_file_idx)
             img_file_name_ls.append(image_path_11)
             caption_ls.append(full_query)
+        all_grouped_sub_q_ids_ls = None
         
         if algebra_method == "five":
         
-            decomposed_res_file = os.path.join(data_path, "flickr_500_result.txt")
+            decomposed_res_file = os.path.join(data_path, decomposed_res_file_name)
             sub_caption_ls = []
             with open(decomposed_res_file, 'r') as f:
                 for line in f:
@@ -552,17 +562,22 @@ def load_flickr_dataset_full0(data_path, query_path, subset_img_id=None, redecom
 
                     # tree_11.display(tree_11.root)
                     sub_caption_ls.append([tree])
+                    # sub_caption_ls.append([])
                     if len(sub_caption_ls) == query_count:
                         break
-            all_grouped_sub_q_ids_ls = [None]
+            
         # else:
-        decomposed_res_file = os.path.join(data_path, "flickr_500_simple_decompose_result.txt")
+        decomposed_res_file = os.path.join(data_path, simple_decomposed_res_file_name)
         origin_sub_caption_ls = []
         with open(decomposed_res_file, 'r') as f:
-            for line in f:
-                decomposed_subqueries = [line.strip().split("|")]
+            json_obj = json.load(f)
+            for line_idx in range(query_count):
+                decomposed_subqueries = json_obj[str(line_idx+1)]
+                # sub_caption_ls.append(decomposed_subqueries)
+                
+                
                 if algebra_method == "five":
-                    sub_caption_ls[len(origin_sub_caption_ls)][0].decomposed_subqueries = decomposed_subqueries
+                    # sub_caption_ls[len(origin_sub_caption_ls)][0].decomposed_subqueries = decomposed_subqueries
                     root = TreeNode(1, caption_ls[len(origin_sub_caption_ls)], 'root', 1)
                     tree = Tree(root)
                     for subquery_idx in range(len(decomposed_subqueries[0])):
@@ -573,6 +588,39 @@ def load_flickr_dataset_full0(data_path, query_path, subset_img_id=None, redecom
                 origin_sub_caption_ls.append(decomposed_subqueries)
                 if len(origin_sub_caption_ls) == query_count:
                     break
+                
+        decomposed_dependency_res_file = os.path.join(data_path, simple_decomposed_dependency_file_name)
+        
+        all_grouped_sub_q_ids_ls = []
+        
+        with open(decomposed_dependency_res_file, 'r') as f:
+            json_obj = json.load(f)
+            for line_idx in range(query_count):
+                decomposed_subqueries_dependency = json_obj[line_idx]
+                
+                all_sub_query_ids = []
+                for sub_query_idx in range(len(decomposed_subqueries_dependency[0])):
+                    all_sub_query_ids.extend(decomposed_subqueries_dependency[0][sub_query_idx])
+                
+                assert len(all_sub_query_ids) == len(origin_sub_caption_ls[line_idx][0])
+                
+                all_grouped_sub_q_ids_ls.append(decomposed_subqueries_dependency)
+                if len(all_grouped_sub_q_ids_ls) == query_count:
+                    break
+            # for line in f:
+                # decomposed_subqueries = [line.strip().split("|")]
+                # if algebra_method == "five":
+                #     # sub_caption_ls[len(origin_sub_caption_ls)][0].decomposed_subqueries = decomposed_subqueries
+                #     root = TreeNode(1, caption_ls[len(origin_sub_caption_ls)], 'root', 1)
+                #     tree = Tree(root)
+                #     for subquery_idx in range(len(decomposed_subqueries[0])):
+                #         subquery=decomposed_subqueries[0][subquery_idx]
+                #         node = TreeNode(subquery_idx, subquery, 'plain', 1)
+                #         tree.add_child(root, node)
+                #     sub_caption_ls[len(origin_sub_caption_ls)].append(tree)
+                # origin_sub_caption_ls.append(decomposed_subqueries)
+                # if len(origin_sub_caption_ls) == query_count:
+                #     break
             
         if not algebra_method == "five":
             sub_caption_ls = origin_sub_caption_ls
@@ -581,7 +629,7 @@ def load_flickr_dataset_full0(data_path, query_path, subset_img_id=None, redecom
             # sub_caption_ls = [["Two women, both wearing glasses","Two women are playing clarinets","an elderly woman is playing a stringed instrument"]]
             # sub_caption_ls = [[[full_query]]]#[["Two young guys with shaggy hair| guys look at their hands| guys hanging out in the yard."]]
             # all_grouped_sub_q_ids_ls = [[[0,1], [2,3]]]
-            all_grouped_sub_q_ids_ls = [None]
+            # all_grouped_sub_q_ids_ls = None
 
         # root = TreeNode(0, full_query, 'root', 1)
         # Two women, both wearing glasses, are playing clarinets and an elderly woman is playing a stringed instrument.

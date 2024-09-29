@@ -2,6 +2,10 @@ import utils
 from tqdm import tqdm
 import os
 
+def calculate_bbox_size(bbox1):
+    left1, upper1, right1, lower1 = bbox1
+    area_bbox1 = (right1 - left1) * (lower1 - upper1)
+    return area_bbox1
 
 def calculate_iou(bbox1, bbox2):
     #print(bbox1)
@@ -42,18 +46,23 @@ def generate_containment_list(intersect_ratio, all_valid_bboxes_list):
           if i != j:
               iou = calculate_iou(bbox1, bbox2)
               if iou > intersect_ratio:
-                containment_list[i].append(j)
+                    # if calculate_bbox_size(bbox1) > 5*calculate_bbox_size(bbox2):
+                    #     containment_list[i].append(j)
+                    # elif calculate_bbox_size(bbox1) > calculate_bbox_size(bbox2):
+                    #     containment_list[i].append(j)
+                    if not calculate_bbox_size(bbox2) > 2*calculate_bbox_size(bbox1):
+                        containment_list[i].append(j)
     all_containment_list.append(containment_list)
   return all_containment_list
 
-def generate_all_containment_list(all_bboxes_ls):
+def generate_all_containment_list(all_bboxes_ls, intersection_threshold=0.9):
     
     all_containment_ls = []
-    
+    print("intersect_ratio: ", intersection_threshold)
     for bboxes_ls in tqdm(all_bboxes_ls):
         all_valid_bboxes_list_11 = []
         all_valid_bboxes_list_11.append(bboxes_ls)
-        containment_list = generate_containment_list(0.6, all_valid_bboxes_list_11)[0]
+        containment_list = generate_containment_list(intersection_threshold, all_valid_bboxes_list_11)[0]
         all_containment_ls.append(containment_list)
     return all_containment_ls
 
@@ -68,6 +77,7 @@ def is_bbox_overlapped(bbox1, bbox2):
     size1 = (x2_1 - x1_1) * (y2_1 - y1_1)
     size2 = (x2_2 - x1_2) * (y2_2 - y1_2)
     min_size = min(size1, size2)
+    # others: 0.1
     return intersection_area > 0.1 * min_size
     # return intersection_area > 0.5 * min_size
 
