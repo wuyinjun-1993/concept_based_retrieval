@@ -1,10 +1,12 @@
+import sys
+sys.path.append(r'/root/autodl-tmp/RAG/Decompose_retrieval/segment-anything')
 from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 import torch
 from tqdm import tqdm
 import os
 import numpy as np
 from PIL import Image
-
+import copy
 from skimage.measure import label, regionprops
 from skimage.segmentation import slic
 from dataclasses import dataclass
@@ -27,14 +29,12 @@ import networkx as nx
 from beir.retrieval import models
 from transformers import BlipProcessor, BlipForConditionalGeneration
 
-import json
+
 
 import requests
 from PIL import Image
 from io import BytesIO
 from transformers import AutoTokenizer, BitsAndBytesConfig
-from parse_queries_to_trees import *
-from agg_query_processing import Tree, TreeNode
 # from llava.model import LlavaLlamaForCausalLM
 # import torch
 # from llava.conversation import conv_templates, SeparatorStyle
@@ -316,497 +316,101 @@ def load_flickr_dataset(data_path, query_path, subset_img_id=None, redecompose=F
 
     # return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
 
-def load_flickr_dataset_full(data_path, query_path, subset_img_id=None, redecompose=False, total_count = 1000, algebra_method="five"):
+def load_flickr_dataset_full(data_path, query_path, subset_img_id=None, redecompose=False, total_count = 1000):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
     # img_caption_file_name= os.path.join(query_path, "sub_queries.csv")
-    
-    selected_query_file = os.path.join(data_path, "flickr_500_choose.csv")   
-    query_df = pd.read_csv(selected_query_file)
-    df = pd.read_csv(os.path.join(data_path, 'flickr_annotations_30k.csv'))
-    
-    # selected_filename = "1000092795.jpg"
-    # selected_filename = "10002456.jpg"
-    # selected_filename = "125272627.jpg"
-    # selected_filename = "1000366164.jpg"
-    
-    selected_img_idx = 30 #df[df['filename'] == selected_filename].index[0]
-    
-    # full_query = "Two men in Germany jumping over a rail at the same time without shirts."
-    # full_query = "Several women are gather around a table in a corner surrounded by bookshelves."
-    # selected_img_idx = 11
-    
-    
-    image_path_11 = os.path.join(data_path, "flickr30k-images/") + query_df.iloc[selected_img_idx]['filename']
-    
-    full_query = query_df.iloc[selected_img_idx]['choose']
-    origin_file_idx = df[df['filename'] == query_df.iloc[selected_img_idx]['filename']].index[0]
-    print("full origin query::", full_query)
-    print("selected image::", query_df.iloc[selected_img_idx]['filename'])
-    print("origin file idx::", origin_file_idx)
-    if algebra_method == "five":
-    
-        root = TreeNode(0, full_query, 'root', 1)
-        child1 = TreeNode(1, 'a table in a corner', 'plain', 1)
-        child2 = TreeNode(2, 'a corner surrounded by bookshelves', 'plain', 1)
-        child3 = TreeNode(3, 'One woman is gathered around a table', 'count', 2)
-        child4 = TreeNode(4, 'One woman is gathered around a table', 'plain', 1)
-        tree_11 = Tree(root)
-        tree_11.add_child(root, child1)
-        tree_11.add_child(root, child2)
-        tree_11.add_child(root, child3)
-        tree_11.add_child(child3, child4)
-    
-    
-    
-        # root = TreeNode(0, 'Several men in hard hats are operating a giant pulley system.', 'root', 1)
-        # child1 = TreeNode(1, 'One man in hard hats are operating a giant pulley system.', 'count', 2)
-        # child2 = TreeNode(2, 'One man in hard hats', 'plain', 1)
-        # child3 = TreeNode(3, 'a man is operating a giant pulley system', 'plain', 1)
-        # # child4 = TreeNode(4, 'One young guy hanging out in the yard', 'plain', 1)
-        # tree_11 = Tree(root)
-        # tree_11.add_child(root, child1)
-        # tree_11.add_child(child1, child2)
-        # tree_11.add_child(child1, child3)
-        # tree_11.add_child(child1, child4)
-        
-        
-        
-        
-        
-        # root = TreeNode(0, 'Two young guys with shaggy hair look at their hands while hanging out in the yard.', 'root', 1)
-        # child1 = TreeNode(1, 'One young guys with shaggy hair look at their hands while hanging out in the yard.', 'count', 2)
-        # child2 = TreeNode(2, 'One young guys with shaggy hair', 'plain', 1)
-        # child3 = TreeNode(3, 'One young guy looks at his hands', 'plain', 1)
-        # child4 = TreeNode(4, 'One young guy hanging out in the yard', 'plain', 1)
-        # tree_11 = Tree(root)
-        # tree_11.add_child(root, child1)
-        # tree_11.add_child(child1, child2)
-        # tree_11.add_child(child1, child3)
-        # tree_11.add_child(child1, child4)
-        
-        # tree_11.add_child(child1, child5)
-        # tree_11.add_child(child1, child6)
-        
-        # root = TreeNode(0, 'Three young men and a young woman wearing sneakers are leaping in midair at the top of a flight of concrete stairs.', 'root', 1)
-        # child1 = TreeNode(1, 'Three young men wearing sneakers are leaping in midair at the top of a flight of concrete stairs.', 'count', 3)
-        # child2 = TreeNode(2, 'A young woman wearing sneakers.', 'plain', 1)
-        # child3 = TreeNode(3, 'A young woman leaping in midair at the top of a flight of concrete stairs.', 'plain', 1)
-        # # child4 = TreeNode(4, 'A flight of concrete stairs.', 'plain', 1)
-        # child5 = TreeNode(5, 'A young man wearing sneakers.', 'plain', 1)
-        # child6 = TreeNode(6, 'A young man leaping in midair at the top of a flight of concrete stairs.', 'plain', 1)
-        # tree_11 = Tree(root)
-        # tree_11.add_child(root, child1)
-        # tree_11.add_child(root, child3)
-        # tree_11.add_child(root, child2)
-        # # tree_11.add_child(root, child4)
-        # tree_11.add_child(child1, child5)
-        # tree_11.add_child(child1, child6)
-        
-        
-        
-        # Display the tree
-        tree_11.display(tree_11.root)
-        sub_caption_ls = [[tree_11]]
-        all_grouped_sub_q_ids_ls = [None]
+    if total_count < 0:
+        img_caption_file_name= os.path.join(query_path, "full_queries.csv")
     else:
-        # sub_caption_ls = [['A young woman wearing sneakers.', 'A young woman leaping in midair at the top of a flight of concrete stairs.', 'Three young men wearing sneakers.', 'Three young men leaping in midair at the top of a flight of concrete stairs.']]
-        # sub_caption_ls = [['Two young guys with shaggy hair', 'Two young guy looks at his hands', 'Two young guy hanging out in the yard']]
-        sub_caption_ls = [["Several women are gather around a table","a table in a corner","a corner surrounded by bookshelves"]]
-        # all_grouped_sub_q_ids_ls = [[[0,1], [2,3]]]
-        all_grouped_sub_q_ids_ls = [None]
-    
-    # caption_ls = ["Two young guys with shaggy hair look at their hands while hanging out in the yard."]
-    caption_ls = [full_query]
-    
-    img_file_name_ls = [image_path_11]
-    
-    # img_idx_ls = [df.iloc[11]['filename']]
-    img_idx_ls = [origin_file_idx]
-    
-    return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
-    
-    
-def load_flickr_dataset_full0(data_path, query_path, subset_img_id=None, redecompose=False, total_count = 1000, algebra_method="five"):
-    # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
-    
-    # img_caption_file_name= os.path.join(query_path, "sub_queries.csv")
-    selected_query_file_name = "flickr_500_choose.csv"
-    decomposed_res_file_name = "flickr_500_result.txt"
-    # simple_decomposed_res_file_name = "flickr_500_simple_decompose_result.txt"
-    simple_decomposed_res_file_name = "flickr_simple_decompose_result_240928.json"
-    simple_decomposed_dependency_file_name = "flickr_simple_decompose_dependency_240928.json"
-    # selected_query_file_name = "flickr_adjust.csv"
-    # decomposed_res_file_name = "flickr_adjust_result.txt"
-    # simple_decomposed_res_file_name = "flickr_adjust_simple_decompose_result.txt"
+        img_caption_file_name= os.path.join(query_path, "full_queries_" + str(total_count) + ".csv")
+    is_full_query_file = True
+    if not os.path.exists(img_caption_file_name):
+        is_full_query_file = False
+        img_caption_file_name= os.path.join(query_path, "results_20130124.token")
+        caption_pd = pd.read_csv(img_caption_file_name, sep="\t")
+    else:
+        caption_pd = pd.read_csv(img_caption_file_name)
+
+
+
+    img_folder = os.path.join(data_path, "flickr30k-images/")
+    # img_folder2 = os.path.join(data_path, "VG_100K_2/")
+
+    if not is_full_query_file:
+        header_names = ["image_id", "caption"]
+    else:
+        # if len(caption_pd.columns) == 3:
+        header_names = ["image_id", "caption", "caption_triples_ls", "groups"]
+            
+    caption_pd.columns = header_names[0:len(caption_pd.columns)]
     
     
-    selected_query_file = os.path.join(data_path, selected_query_file_name)   
-    query_df = pd.read_csv(selected_query_file)
-    df = pd.read_csv(os.path.join(data_path, 'flickr_annotations_30k.csv'))
-    
-    # selected_filename = "1000092795.jpg"
-    # selected_filename = "10002456.jpg"
-    # selected_filename = "125272627.jpg"
-    # selected_filename = "1000366164.jpg"
+    # img_ls = []
+    img_idx_ls = []
+    caption_ls = []
     sub_caption_ls = []
-    all_grouped_sub_q_ids_ls = [None]
-    query_count=100
-    if subset_img_id is not None:
+    img_file_name_ls = []
+    all_grouped_sub_q_ids_ls = []
     
-        selected_img_idx = subset_img_id #df[df['filename'] == selected_filename].index[0]
-        
-        # full_query = "Two men in Germany jumping over a rail at the same time without shirts."
-        # full_query = "Several women are gather around a table in a corner surrounded by bookshelves."
-        # selected_img_idx = 11
-        
-        
-        image_path_11 = os.path.join(data_path, "flickr30k-images/") + query_df.iloc[selected_img_idx]['filename']
-        
-        full_query = query_df.iloc[selected_img_idx]['choose']
-        origin_file_idx = df[df['filename'] == query_df.iloc[selected_img_idx]['filename']].index[0]
-        print("full origin query::", full_query)
-        print("selected image::", query_df.iloc[selected_img_idx]['filename'])
-        print("origin file idx::", origin_file_idx)
-        caption_ls = [full_query]
-    
-        img_file_name_ls = [image_path_11]
-        
-        # img_idx_ls = [df.iloc[11]['filename']]
-        img_idx_ls = [origin_file_idx]
-        
-        if algebra_method == "five":
-        
-            decomposed_res_file = os.path.join(data_path, decomposed_res_file_name)
-            sub_caption_ls = []
-            line_idx = 0
-            
-            root = TreeNode(0, full_query, 'root', 1)
-            # child1 = TreeNode(1, 'One young guys with shaggy hair look at their hands while hanging out in the yard.', 'count', 2)
-            child1 = TreeNode(1, "One woman is standing", 'count', 2)
-            child2 = TreeNode(2, 'a bus with buildings behind it', 'plain', 1)
-            child3 = TreeNode(3, 'One woman is standing', 'plain', 1)
-            tree = Tree(root)
-            tree.add_child(root, child1)
-            tree.add_child(root, child2)
-            tree.add_child(child1, child3)
-            
-            root = TreeNode(0, full_query, 'root', 1)
-            # child1 = TreeNode(1, 'One young guys with shaggy hair look at their hands while hanging out in the yard.', 'count', 2)
-            child1 = TreeNode(1, "Several women are standing", 'plain', 1)
-            child2 = TreeNode(2, 'a bus with buildings behind it', 'plain', 1)
-            # child3 = TreeNode(3, 'One woman is standing', 'plain', 1)
-            tree2 = Tree(root)
-            tree2.add_child(root, child1)
-            tree2.add_child(root, child2)
-            
-            # root = TreeNode(0, 'Two young guys with shaggy hair look at their hands while hanging out in the yard.', 'root', 1)
-            # child1 = TreeNode(1, 'One young guys with shaggy hair look at their hands while hanging out in the yard.', 'count', 2)
-            # child2 = TreeNode(2, 'Two young guys with shaggy hair', 'plain', 1)
-            # child3 = TreeNode(3, 'Two young guy looks at his hands', 'plain', 1)
-            # child4 = TreeNode(4, 'Two young guy hanging out in the yard', 'plain', 1)
-            # tree2 = Tree(root)
-            # tree2.add_child(root, child1)
-            # tree2.add_child(child1, child2)
-            # tree2.add_child(child1, child3)
-            # tree2.add_child(child1, child4)
-            # tree_11.add_child(child1, child4)
-            
-            # with open(decomposed_res_file, 'r') as f:
-            #     for line in f:
-                    
+    if 'caption_triples_ls' not in caption_pd.columns:
+        caption_pd['caption_triples_ls'] = np.nan
+    if "groups" not in caption_pd.columns:
+        caption_pd['groups'] = np.nan 
 
-            #         # parsed_nodes = parse_nodes(line)
-            #         # root = build_tree(parsed_nodes, 0)
-            #         # tree = Tree(root)
-
-            #         # tree_11.display(tree_11.root)
-                    
-            #         if line_idx == subset_img_id:
-            #             tree = construct_tree_from_string(line)
-            sub_caption_ls.append([tree, tree2])
-            #             break
-            #         line_idx += 1
-            all_grouped_sub_q_ids_ls = None
+    for idx in tqdm(range(len(caption_pd))):
+        image_idx = caption_pd.iloc[idx]['image_id']
+        image_idx = image_idx.split("#")[0]
+        if image_idx in img_idx_ls:
+            continue
+        
+        full_img_file_name = os.path.join(img_folder, str(image_idx))
+        # if not os.path.exists(full_img_file_name):
+        #     full_img_file_name = os.path.join(img_folder2, str(image_idx) + ".jpg")
+        if not os.path.exists(full_img_file_name):
+            continue
+        img_file_name_ls.append(full_img_file_name)
+        
+        # img = Image.open(full_img_file_name)
+        # img = img.convert('RGB')
+        caption = caption_pd.iloc[idx]['caption']
+        # sub_caption_str = caption_pd.iloc[idx]['caption_triples']
+        sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
+        # sub_captions = decompose_single_query(sub_caption_str)
+        
+        
+        if pd.isnull(caption_pd.iloc[idx]['caption_triples_ls']) or redecompose:
+            sub_caption_str=obtain_response_from_openai(dataset_name="flickr", query=caption)
+            sub_caption_str_ls = sub_caption_str.split("|")
+            segmented_sub_caption_str_ls = []
+            for sub_caption_str in sub_caption_str_ls:
+                segmented_sub_caption_str_ls.append(obtain_response_from_openai(dataset_name="flickr_two", query=sub_caption_str))
+            
+            sub_caption_str = "|".join(segmented_sub_caption_str_ls)
+            caption_pd.at[idx, "caption_triples_ls"] = sub_caption_str
         else:
-            # sub_caption_ls = [['A young woman wearing sneakers.', 'A young woman leaping in midair at the top of a flight of concrete stairs.', 'Three young men wearing sneakers.', 'Three young men leaping in midair at the top of a flight of concrete stairs.']]
-            sub_caption_ls = [[['One young guy with shaggy hair', 'One young guy looks at his hands', 'One young guy is hanging out in the yard', 'Two young guys with shaggy hair', 'Two young guys looks at his hands', 'Two young guys is hanging out in the yard']]]
-            # sub_caption_ls = [["Two women, both wearing glasses","Two women are playing clarinets","an elderly woman is playing a stringed instrument"]]
-            # sub_caption_ls = [[[full_query]]]
-            # all_grouped_sub_q_ids_ls = [[[0,1], [2,3]]]
-            all_grouped_sub_q_ids_ls = None
+            sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
+        
+        sub_captions = decompose_single_query_ls(sub_caption_str)
+        
+        query_paritions_str = caption_pd.iloc[idx]['groups']
+        grouped_sub_q_ids_ls = decompose_single_query_parition_groups(sub_captions, query_paritions_str)
+        print(sub_captions)
+        # img_ls.append(img)
+        img_idx_ls.append(image_idx)
+        caption_ls.append(caption)
+        sub_caption_ls.append(sub_captions)
+        all_grouped_sub_q_ids_ls.append(grouped_sub_q_ids_ls)
+        
+        if total_count > 0 and len(img_file_name_ls) >= total_count:
+            break
+
+    caption_pd.to_csv(img_caption_file_name, index=False)
+    if subset_img_id is None:
+        return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
     else:
-        img_file_name_ls = []
-        img_idx_ls = []
-        caption_ls = []
-        for selected_img_idx in range(query_count):
-            image_path_11 = os.path.join(data_path, "flickr30k-images/") + query_df.iloc[selected_img_idx]['filename']
-            origin_file_idx = df[df['filename'] == query_df.iloc[selected_img_idx]['filename']].index[0]
-            full_query = query_df.iloc[selected_img_idx]['choose']
-            img_idx_ls.append(origin_file_idx)
-            img_file_name_ls.append(image_path_11)
-            caption_ls.append(full_query)
-        all_grouped_sub_q_ids_ls = None
-        
-        if algebra_method == "five":
-        
-            decomposed_res_file = os.path.join(data_path, decomposed_res_file_name)
-            sub_caption_ls = []
-            with open(decomposed_res_file, 'r') as f:
-                for line in f:
-                    tree = construct_tree_from_string(line)
-
-                    # parsed_nodes = parse_nodes(line)
-                    # root = build_tree(parsed_nodes, 0)
-                    # tree = Tree(root)
-
-                    # tree_11.display(tree_11.root)
-                    sub_caption_ls.append([tree])
-                    # sub_caption_ls.append([])
-                    if len(sub_caption_ls) == query_count:
-                        break
-            
-        # else:
-        decomposed_res_file = os.path.join(data_path, simple_decomposed_res_file_name)
-        origin_sub_caption_ls = []
-        with open(decomposed_res_file, 'r') as f:
-            json_obj = json.load(f)
-            for line_idx in range(query_count):
-                decomposed_subqueries = json_obj[str(line_idx+1)]
-                # sub_caption_ls.append(decomposed_subqueries)
-                
-                
-                if algebra_method == "five":
-                    # sub_caption_ls[len(origin_sub_caption_ls)][0].decomposed_subqueries = decomposed_subqueries
-                    root = TreeNode(1, caption_ls[len(origin_sub_caption_ls)], 'root', 1)
-                    tree = Tree(root)
-                    for subquery_idx in range(len(decomposed_subqueries[0])):
-                        subquery=decomposed_subqueries[0][subquery_idx]
-                        node = TreeNode(subquery_idx, subquery, 'plain', 1)
-                        tree.add_child(root, node)
-                    sub_caption_ls[len(origin_sub_caption_ls)].append(tree)
-                origin_sub_caption_ls.append(decomposed_subqueries)
-                if len(origin_sub_caption_ls) == query_count:
-                    break
-                
-        decomposed_dependency_res_file = os.path.join(data_path, simple_decomposed_dependency_file_name)
-        
-        all_grouped_sub_q_ids_ls = []
-        
-        with open(decomposed_dependency_res_file, 'r') as f:
-            json_obj = json.load(f)
-            for line_idx in range(query_count):
-                decomposed_subqueries_dependency = json_obj[line_idx]
-                
-                all_sub_query_ids = []
-                for sub_query_idx in range(len(decomposed_subqueries_dependency[0])):
-                    all_sub_query_ids.extend(decomposed_subqueries_dependency[0][sub_query_idx])
-                
-                assert len(all_sub_query_ids) == len(origin_sub_caption_ls[line_idx][0])
-                
-                all_grouped_sub_q_ids_ls.append(decomposed_subqueries_dependency)
-                if len(all_grouped_sub_q_ids_ls) == query_count:
-                    break
-            # for line in f:
-                # decomposed_subqueries = [line.strip().split("|")]
-                # if algebra_method == "five":
-                #     # sub_caption_ls[len(origin_sub_caption_ls)][0].decomposed_subqueries = decomposed_subqueries
-                #     root = TreeNode(1, caption_ls[len(origin_sub_caption_ls)], 'root', 1)
-                #     tree = Tree(root)
-                #     for subquery_idx in range(len(decomposed_subqueries[0])):
-                #         subquery=decomposed_subqueries[0][subquery_idx]
-                #         node = TreeNode(subquery_idx, subquery, 'plain', 1)
-                #         tree.add_child(root, node)
-                #     sub_caption_ls[len(origin_sub_caption_ls)].append(tree)
-                # origin_sub_caption_ls.append(decomposed_subqueries)
-                # if len(origin_sub_caption_ls) == query_count:
-                #     break
-            
-        if not algebra_method == "five":
-            sub_caption_ls = origin_sub_caption_ls
-            # sub_caption_ls = [['A young woman wearing sneakers.', 'A young woman leaping in midair at the top of a flight of concrete stairs.', 'Three young men wearing sneakers.', 'Three young men leaping in midair at the top of a flight of concrete stairs.']]
-            # sub_caption_ls = [[['One young guy with shaggy hair', 'One young guy looks at his hands', 'One young guy is hanging out in the yard']]]
-            # sub_caption_ls = [["Two women, both wearing glasses","Two women are playing clarinets","an elderly woman is playing a stringed instrument"]]
-            # sub_caption_ls = [[[full_query]]]#[["Two young guys with shaggy hair| guys look at their hands| guys hanging out in the yard."]]
-            # all_grouped_sub_q_ids_ls = [[[0,1], [2,3]]]
-            # all_grouped_sub_q_ids_ls = None
-
-        # root = TreeNode(0, full_query, 'root', 1)
-        # Two women, both wearing glasses, are playing clarinets and an elderly woman is playing a stringed instrument.
-        # child1 = TreeNode(1, 'Two women, both wearing glasses, are playing clarinets', 'count', 2)
-        # child2 = TreeNode(2, 'One women wearing glasses', 'plain', 1)
-        # child3 = TreeNode(3, 'One women is playing clarinets', 'plain', 1)
-        # child4 = TreeNode(4, 'an elderly woman is playing a stringed instrument', 'plain', 1)
-        
-        # # tree_11 = Tree(root)
-        # # tree_11.add_child(root, child1)
-        # # tree_11.add_child(root, child4)
-        # # tree_11.add_child(child1, child2)
-        # # tree_11.add_child(child1, child3)
-        
-        # # Several men in hard hats are operating a giant pulley system.
-        # child1 = TreeNode(1, 'One man in hard hats are operating a giant pulley system', 'count', 2)
-        # child2 = TreeNode(2, 'One man in hard hats', 'plain', 1)
-        # child3 = TreeNode(3, 'One man is operating a giant pulley system', 'plain', 1)
-        # # child4 = TreeNode(4, 'one men standing near a stove', 'plain', 1)
-        
-        # tree_11 = Tree(root)
-        # tree_11.add_child(root, child1)
-        # tree_11.add_child(child1, child2)
-        # tree_11.add_child(child1, child3)
-        # tree_11.add_child(child3, child4)
-        # tree_11.add_child(child1, child3)
-    
-    
-    
-    #     # root = TreeNode(0, 'Several men in hard hats are operating a giant pulley system.', 'root', 1)
-    #     # child1 = TreeNode(1, 'One man in hard hats are operating a giant pulley system.', 'count', 2)
-    #     # child2 = TreeNode(2, 'One man in hard hats', 'plain', 1)
-    #     # child3 = TreeNode(3, 'a man is operating a giant pulley system', 'plain', 1)
-    #     # # child4 = TreeNode(4, 'One young guy hanging out in the yard', 'plain', 1)
-    #     # tree_11 = Tree(root)
-    #     # tree_11.add_child(root, child1)
-    #     # tree_11.add_child(child1, child2)
-    #     # tree_11.add_child(child1, child3)
-    #     # tree_11.add_child(child1, child4)
-        
-        
-        
-        
-        
-    #     # root = TreeNode(0, 'Two young guys with shaggy hair look at their hands while hanging out in the yard.', 'root', 1)
-    #     # child1 = TreeNode(1, 'One young guys with shaggy hair look at their hands while hanging out in the yard.', 'count', 2)
-    #     # child2 = TreeNode(2, 'One young guys with shaggy hair', 'plain', 1)
-    #     # child3 = TreeNode(3, 'One young guy looks at his hands', 'plain', 1)
-    #     # child4 = TreeNode(4, 'One young guy hanging out in the yard', 'plain', 1)
-    #     # tree_11 = Tree(root)
-    #     # tree_11.add_child(root, child1)
-    #     # tree_11.add_child(child1, child2)
-    #     # tree_11.add_child(child1, child3)
-    #     # tree_11.add_child(child1, child4)
-        
-    #     # tree_11.add_child(child1, child5)
-    #     # tree_11.add_child(child1, child6)
-        
-    #     # root = TreeNode(0, 'Three young men and a young woman wearing sneakers are leaping in midair at the top of a flight of concrete stairs.', 'root', 1)
-    #     # child1 = TreeNode(1, 'Three young men wearing sneakers are leaping in midair at the top of a flight of concrete stairs.', 'count', 3)
-    #     # child2 = TreeNode(2, 'A young woman wearing sneakers.', 'plain', 1)
-    #     # child3 = TreeNode(3, 'A young woman leaping in midair at the top of a flight of concrete stairs.', 'plain', 1)
-    #     # # child4 = TreeNode(4, 'A flight of concrete stairs.', 'plain', 1)
-    #     # child5 = TreeNode(5, 'A young man wearing sneakers.', 'plain', 1)
-    #     # child6 = TreeNode(6, 'A young man leaping in midair at the top of a flight of concrete stairs.', 'plain', 1)
-    #     # tree_11 = Tree(root)
-    #     # tree_11.add_child(root, child1)
-    #     # tree_11.add_child(root, child3)
-    #     # tree_11.add_child(root, child2)
-    #     # # tree_11.add_child(root, child4)
-    #     # tree_11.add_child(child1, child5)
-    #     # tree_11.add_child(child1, child6)
-        
-        
-        
-    #     # Display the tree
-        # tree_11.display(tree_11.root)
-        # sub_caption_ls = [[tree_11]]
-        # all_grouped_sub_q_ids_ls = [None]    
-    # caption_ls = ["Two young guys with shaggy hair look at their hands while hanging out in the yard."]
-    
-    
-    return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
-    
-    
-    
-    # if total_count < 0:
-    #     img_caption_file_name= os.path.join(query_path, "full_queries.csv")
-    # else:
-    #     img_caption_file_name= os.path.join(query_path, "full_queries_" + str(total_count) + ".csv")
-    # is_full_query_file = True
-    # if not os.path.exists(img_caption_file_name):
-    #     is_full_query_file = False
-    #     img_caption_file_name= os.path.join(query_path, "results_20130124.token")
-    #     caption_pd = pd.read_csv(img_caption_file_name, sep="\t")
-    # else:
-    #     caption_pd = pd.read_csv(img_caption_file_name)
-
-
-
-    # img_folder = os.path.join(data_path, "flickr30k-images/")
-    # # img_folder2 = os.path.join(data_path, "VG_100K_2/")
-
-    # if not is_full_query_file:
-    #     header_names = ["image_id", "caption"]
-    # else:
-    #     # if len(caption_pd.columns) == 3:
-    #     header_names = ["image_id", "caption", "caption_triples_ls", "groups"]
-            
-    # caption_pd.columns = header_names[0:len(caption_pd.columns)]
-    
-    
-    # # img_ls = []
-    # img_idx_ls = []
-    # caption_ls = []
-    # sub_caption_ls = []
-    # img_file_name_ls = []
-    # all_grouped_sub_q_ids_ls = []
-    
-    # if 'caption_triples_ls' not in caption_pd.columns:
-    #     caption_pd['caption_triples_ls'] = np.nan
-    # if "groups" not in caption_pd.columns:
-    #     caption_pd['groups'] = np.nan 
-
-    # for idx in tqdm(range(len(caption_pd))):
-    #     image_idx = caption_pd.iloc[idx]['image_id']
-    #     image_idx = image_idx.split("#")[0]
-    #     if image_idx in img_idx_ls:
-    #         continue
-        
-    #     full_img_file_name = os.path.join(img_folder, str(image_idx))
-    #     # if not os.path.exists(full_img_file_name):
-    #     #     full_img_file_name = os.path.join(img_folder2, str(image_idx) + ".jpg")
-    #     if not os.path.exists(full_img_file_name):
-    #         continue
-    #     img_file_name_ls.append(full_img_file_name)
-        
-    #     # img = Image.open(full_img_file_name)
-    #     # img = img.convert('RGB')
-    #     caption = caption_pd.iloc[idx]['caption']
-    #     # sub_caption_str = caption_pd.iloc[idx]['caption_triples']
-    #     sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
-    #     # sub_captions = decompose_single_query(sub_caption_str)
-        
-        
-    #     if pd.isnull(caption_pd.iloc[idx]['caption_triples_ls']) or redecompose:
-    #         sub_caption_str=obtain_response_from_openai(dataset_name="flickr", query=caption)
-    #         sub_caption_str_ls = sub_caption_str.split("|")
-    #         segmented_sub_caption_str_ls = []
-    #         for sub_caption_str in sub_caption_str_ls:
-    #             segmented_sub_caption_str_ls.append(obtain_response_from_openai(dataset_name="flickr_two", query=sub_caption_str))
-            
-    #         sub_caption_str = "|".join(segmented_sub_caption_str_ls)
-    #         caption_pd.at[idx, "caption_triples_ls"] = sub_caption_str
-    #     else:
-    #         sub_caption_str = caption_pd.iloc[idx]['caption_triples_ls']
-        
-    #     sub_captions = decompose_single_query_ls(sub_caption_str)
-        
-    #     query_paritions_str = caption_pd.iloc[idx]['groups']
-    #     grouped_sub_q_ids_ls = decompose_single_query_parition_groups(sub_captions, query_paritions_str)
-    #     print(sub_captions)
-    #     # img_ls.append(img)
-    #     img_idx_ls.append(image_idx)
-    #     caption_ls.append(caption)
-    #     sub_caption_ls.append(sub_captions)
-    #     all_grouped_sub_q_ids_ls.append(grouped_sub_q_ids_ls)
-        
-    #     if total_count > 0 and len(img_file_name_ls) >= total_count:
-    #         break
-
-    # caption_pd.to_csv(img_caption_file_name, index=False)
-    # if subset_img_id is None:
-    #     return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
-    # else:
-    #     print(sub_caption_ls[subset_img_id])
-    #     return [caption_ls[subset_img_id]], [img_file_name_ls[subset_img_id]], [sub_caption_ls[subset_img_id]], [img_idx_ls[subset_img_id]], [all_grouped_sub_q_ids_ls[subset_img_id]]
+        print(sub_caption_ls[subset_img_id])
+        return [caption_ls[subset_img_id]], [img_file_name_ls[subset_img_id]], [sub_caption_ls[subset_img_id]], [img_idx_ls[subset_img_id]], [all_grouped_sub_q_ids_ls[subset_img_id]]
 
     # return caption_ls, img_file_name_ls, sub_caption_ls, img_idx_ls, all_grouped_sub_q_ids_ls
 
@@ -1004,6 +608,38 @@ def load_other_sharegpt4v_mscoco_images(dataset_path, img_idx_ls, img_file_name_
     return img_idx_ls, img_file_name_ls
 
 
+def load_multiqa_datasets(data_path, query_path, subset_img_id=None, redecompose=False, is_test=False):
+    img_folder = data_path
+    
+    img_caption_file_name = os.path.join(query_path, "queries/multiqa_query.csv")
+    caption_pd = pd.read_csv(img_caption_file_name)
+
+    img_idx_ls = [] # 所有image的ID
+    queries_ls = []  # 数据集中所有查询组成的list
+    sub_queries_ls = [] # 分解后的查询，这里因为没有分解，所以分解后的查询可以是原来的查询
+    img_file_name_ls = [] # 所有image在文件中所在的文件名组成的list
+    grouped_sub_q_ids_ls = None
+
+    print('query loading')
+    # queries
+    for idx in tqdm(range(len(caption_pd))):
+        row = caption_pd.iloc[idx]
+        queries_ls.append(row['query'])
+        tmp_ls = []
+        tmp_ls.append(row['query'])
+        sub_queries_ls.append(tmp_ls)
+
+    print('images loading')
+    # imgs
+    for idx, filename in tqdm(enumerate(os.listdir(img_folder))):
+        full_file_path = os.path.join(img_folder, filename)
+        img_file_name_ls.append(full_file_path)
+        img_idx_ls.append(idx)
+
+    return queries_ls, img_file_name_ls, sub_queries_ls, img_idx_ls, grouped_sub_q_ids_ls
+
+
+
 def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=False, is_test=False):
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all4.csv")
     
@@ -1019,6 +655,7 @@ def load_crepe_datasets(data_path, query_path, subset_img_id=None, redecompose=F
     with open(os.path.join(query_path, "prod_hard_negatives/selected_img_id_ls"), "rb") as f:
         selected_img_id_ls = pickle.load(f)
     # selected_img_id_ls.append(0)
+    
     img_folder = os.path.join(data_path, "VG_100K/")
     img_folder2 = os.path.join(data_path, "VG_100K_2/")
 
@@ -1228,26 +865,22 @@ def load_other_flickr_images(data_path, query_path, img_idx_ls, img_file_name_ls
     
     # img_caption_file_name= os.path.join(query_path, "prod_hard_negatives/prod_vg_hard_negs_swap_all.csv")
     
-    # filename_cap_mappings = read_flickr_image_captions(os.path.join(data_path, "results_20130124.token"))    
+    filename_cap_mappings = read_flickr_image_captions(os.path.join(data_path, "results_20130124.token"))    
 
-    df = pd.read_csv(os.path.join(data_path, 'flickr_annotations_30k.csv'))
-    
     # img_folder = os.path.join(data_path, "VG_100K/")
-    # img_folder = os.path.join(data_path, "flickr30k-images/")
+    img_folder = os.path.join(data_path, "flickr30k-images/")
     # img_folder2 = os.path.join(data_path, "VG_100K_2/")
 
     # caption_pd = pd.read_csv(img_caption_file_name)
     if total_count > 0 and len(img_file_name_ls) >= total_count:
         return img_idx_ls, img_file_name_ls          
     # for idx in range(len(caption_pd)):
-    # for image_idx in tqdm(filename_cap_mappings):
-    for image_idx in tqdm(range(len(df))):
+    for image_idx in tqdm(filename_cap_mappings):
         # image_idx = caption_pd.iloc[idx]['image_id']
         if image_idx in img_idx_ls:
             continue
         
-        # full_img_file_name = os.path.join(img_folder, str(image_idx))
-        full_img_file_name = os.path.join(data_path, "flickr30k-images/") + df.iloc[image_idx]['filename']
+        full_img_file_name = os.path.join(img_folder, str(image_idx))
         if not os.path.exists(full_img_file_name):
             continue
         #     full_img_file_name = os.path.join(img_folder2, str(image_idx) + ".jpg")
@@ -1556,8 +1189,10 @@ def merge_sub_images_ls_to_all_images_ls(sub_images_ls_ls, all_images_ls_ls):
         all_images_ls_ls[idx] = torch.cat([all_images_ls_ls[idx], sub_images_ls_ls[idx]])
     return all_images_ls_ls
 
-def embed_patches(forward_func, patches, model, input_processor, processor=None, device='cuda', resize=None, max_batch_size=100):
-    patches = input_processor(patches)
+def embed_patches(forward_func, patches, model, input_processor, processor=None, device='cuda', resize=None,  max_batch_size=100):
+    
+    patches = input_processor(patches)   # jump2
+    
     if processor is not None:
         patches = processor(patches)
     x = _to_device(patches, device)
@@ -1833,8 +1468,8 @@ def get_patches_from_bboxes(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls,
     # img_labels = []
     # masks = []
     # bboxes_ls=[]
-    # for i, (image_file_name) in tqdm(enumerate(zip(image_file_name_ls))):
-    for i, image_file_name in tqdm(enumerate(image_file_name_ls)):
+    # for i, (image_file_name) in tqdm(enumerate(zip(image_file_name_ls))):  
+    for i, image_file_name in tqdm(enumerate(image_file_name_ls)):    # problem
         
         image = Image.open(image_file_name).convert('RGB')
         
@@ -1860,10 +1495,22 @@ def get_patches_from_bboxes(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls,
                 # # curr_patch = PIL.ImageOps.pad(curr_patch.crop(bbox), image_size)
                 # curr_patch = curr_patch.crop(bbox)
                 curr_patch = get_sub_image_by_bbox(image, bbox)
+                width, height = curr_patch.size
+                
+                if width == 1 or height == 1:
+                    continue   #deal with the clip bug when face 1*x image
+                
                 img_per_batch_ls[patch_count_idx].append(i)
                 patches.append(curr_patch)
-            
+                
+            try:
+                patches_copy = copy.deepcopy(patches)  # 创建patches的深拷贝
+                processed_patches = input_processor(patches_copy)
+            except:
+                print(image_file_name)
+                break
             patch_embs = embed_patches(forward_func, patches, model, input_processor, processor, device=device, resize=resize)
+            
             patch_emb_ls[patch_count_idx].append(patch_embs)
             bboxes_ls[patch_count_idx].append(bboxes)
             if save_mask_bbox:
@@ -1960,7 +1607,12 @@ def get_image_embeddings(img_file_name_ls, input_processor, forward_func,model,d
     results = []
     for _, file_name in tqdm(enumerate(img_file_name_ls)):
         image = Image.open(file_name).convert('RGB')
-        patches = input_processor([image])
+        
+        try:
+            patches = input_processor([image])
+        except Exception as e:
+            print(f"Error processing images: {file_name}")    # here
+            
         x = _to_device(patches, device)
         results.append(forward_func(x, model).cpu())
     results = torch.cat(results)
@@ -2058,57 +1710,55 @@ class ConceptLearner:
         cached_img_idx_ls = None
         if not os.path.exists(f"output/"):
             os.mkdir(f"output/")
-        
-        if self.img_concept:
-            for idx in range(len(patch_count_ls)):
-                n_patches = patch_count_ls[idx]
-                cached_file_name = utils.obtain_cached_file_name(segmentation_method, model_name, method, n_patches, samples_hash, not_normalize=not_normalize, use_mask=use_mask)
-                # cached_file_name = f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
-                if os.path.exists(cached_file_name):
-                    print("Loading cached patches")
-                    print(samples_hash)
-                    cached_data = utils.load(cached_file_name)
-                    
-                    # if len(cached_data) == 6:
-                    bboxes = None
-                    if save_mask_bbox:
-                        patch_activations, masks, bboxes, img_for_patch = cached_data
+        for idx in range(len(patch_count_ls)):
+            n_patches = patch_count_ls[idx]
+            cached_file_name = utils.obtain_cached_file_name(segmentation_method, model_name, method, n_patches, samples_hash, not_normalize=not_normalize, use_mask=use_mask)
+            # cached_file_name = f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
+            if os.path.exists(cached_file_name):
+                print("Loading cached patches")
+                print(samples_hash)
+                cached_data = utils.load(cached_file_name)
+                
+                # if len(cached_data) == 6:
+                bboxes = None
+                if save_mask_bbox:
+                    patch_activations, masks, bboxes, img_for_patch = cached_data
+                else:
+                    if len(cached_data) == 3:
+                        patch_activations, bboxes, img_for_patch = cached_data
                     else:
-                        if len(cached_data) == 3:
-                            patch_activations, bboxes, img_for_patch = cached_data
-                        else:
-                            patch_activations, img_for_patch = cached_data
-                        
-                    # else:
-                    #     image_embs, patch_activations, masks, bboxes, img_for_patch = cached_data
-                        # utils.save((img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch), f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl")
+                        patch_activations, img_for_patch = cached_data
                     
-                    # if image_embs is None and compute_img_emb:
-                    #     image_embs = get_image_embeddings(img_file_name_ls, self.input_processor, self.input_to_latent, self.model, not_normalize=not_normalize)  
+                # else:
+                #     image_embs, patch_activations, masks, bboxes, img_for_patch = cached_data
+                    # utils.save((img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch), f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl")
+                
+                # if image_embs is None and compute_img_emb:
+                #     image_embs = get_image_embeddings(img_file_name_ls, self.input_processor, self.input_to_latent, self.model, not_normalize=not_normalize)  
+                
+                try:
+                    patch_activations = self.store_patch_encodings_separately(img_file_name_ls, patch_activations, img_for_patch)
+                except:
+                    print("no need to separate")
+                patch_emb_ls[idx] = patch_activations
+                img_per_batch_ls[idx] = img_for_patch
+                bboxes_ls[idx] = bboxes
+                if save_mask_bbox:
+                    masks_ls[idx] = masks
                     
-                    try:
-                        patch_activations = self.store_patch_encodings_separately(img_file_name_ls, patch_activations, img_for_patch)
-                    except:
-                        print("no need to separate")
-                    patch_emb_ls[idx] = patch_activations
-                    img_per_batch_ls[idx] = img_for_patch
-                    bboxes_ls[idx] = bboxes
-                    if save_mask_bbox:
-                        masks_ls[idx] = masks
-                        
-                        
-                    patch_count_for_compute_ls[idx] = False
                     
-                    # if save_mask_bbox:
-                    #     utils.save((patch_activations, masks, bboxes, img_for_patch), cached_file_name)
-                    #     # return cached_img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
-                    # else:
-                    #     utils.save((patch_activations, bboxes, img_for_patch), cached_file_name)
-                    
-                    # if save_mask_bbox:  
-                    #     return img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
-                    # else:
-                    #     return img_idx_ls, image_embs, patch_activations, img_for_patch
+                patch_count_for_compute_ls[idx] = False
+                
+                # if save_mask_bbox:
+                #     utils.save((patch_activations, masks, bboxes, img_for_patch), cached_file_name)
+                #     # return cached_img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
+                # else:
+                #     utils.save((patch_activations, bboxes, img_for_patch), cached_file_name)
+                
+                # if save_mask_bbox:  
+                #     return img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
+                # else:
+                #     return img_idx_ls, image_embs, patch_activations, img_for_patch
         if model_name == "default":
             cached_img_file_name = f"output/saved_img_embs_{method}_{samples_hash}.pkl"
         else:
@@ -2132,69 +1782,69 @@ class ConceptLearner:
         # masks = get_slic_segments(img_file_name_ls, n_segments=n_patches)
         # bboxes = masks_to_bboxes(masks)
         # get_patches_from_bboxes(model, images, all_bboxes, input_processor, sub_bboxes=None, image_size=(224, 224), processor=None, resize=None, device="cpu"):
-        if self.img_concept:
-            if True in patch_count_for_compute_ls:
-                if segmentation_method == "scene_graph":
-                    get_patches_from_bboxes_scenegraph(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, self.input_processor, device=self.device, resize=None, save_mask_bbox=False)
+        if True in patch_count_for_compute_ls:
+            if segmentation_method == "scene_graph":
+                get_patches_from_bboxes_scenegraph(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, self.input_processor, device=self.device, resize=None, save_mask_bbox=False)
+            else:
+                if not use_mask:
+                    get_patches_from_bboxes(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, self.input_processor, device=self.device, resize=self.image_size, save_mask_bbox=save_mask_bbox) # jump1
                 else:
-                    if not use_mask:
-                        get_patches_from_bboxes(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, self.input_processor, device=self.device, resize=self.image_size, save_mask_bbox=save_mask_bbox)
-                    else:
-                        get_patches_from_bboxes0(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, bboxes, self.input_processor, device=self.device, resize=self.image_size, save_mask_bbox=save_mask_bbox)
-            
-            # if save_mask_bbox:
-            #     patch_activations, img_for_patch, masks, bboxes = res
-            # else:
-            #     patch_activations, img_for_patch = res
-            
-            #     # patches = self.input_processor(patches)
-            # elif method == "sam":
-            #     masks = get_sam_segments(images)
-            #     bboxes = masks_to_bboxes(masks)
-            #     # Merge close boxes to create relation patches
-            #     if merge:
-            #         bboxes = [merge_boxes(boxes, 8, 8) for boxes in bboxes]
-            #     patches, img_for_patch = get_patches_from_bboxes(images, bboxes, self.input_processor)
-            #     patches = self.input_processor(patches)
-            # elif method == "window":
-            #     patch_size = int(self.image_size // n_patches)
-            #     strides = int(patch_size)
-            #     samples = self.input_processor(images)
-            #     patches = torch.nn.functional.unfold(samples, kernel_size=patch_size, stride=strides)
-            #     patches = patches.transpose(1, 2).contiguous().view(-1, 3, patch_size, patch_size)
-            #     # TODO: add the bbox definition
-            #     bboxes = None
-            #     img_for_patch = None
-            # elif callable(method):
-            #     patches = method(images, n_patches)
-            #     patches = self.input_processor(patches)
-            #     # TODO: add the bbox definition
-            #     bboxes = None
-            #     img_for_patch = None
-            # else:
-            #     raise ValueError("method must be either 'slic' or 'sam' or 'window'.")
+                    get_patches_from_bboxes0(patch_emb_ls, img_per_batch_ls, masks_ls, bboxes_ls, patch_count_for_compute_ls, patch_count_ls, self.input_to_latent, self.model, img_file_name_ls, bboxes, self.input_processor, device=self.device, resize=self.image_size, save_mask_bbox=save_mask_bbox)
+        
+        # if save_mask_bbox:
+        #     patch_activations, img_for_patch, masks, bboxes = res
+        # else:
+        #     patch_activations, img_for_patch = res
+        
+        #     # patches = self.input_processor(patches)
+        # elif method == "sam":
+        #     masks = get_sam_segments(images)
+        #     bboxes = masks_to_bboxes(masks)
+        #     # Merge close boxes to create relation patches
+        #     if merge:
+        #         bboxes = [merge_boxes(boxes, 8, 8) for boxes in bboxes]
+        #     patches, img_for_patch = get_patches_from_bboxes(images, bboxes, self.input_processor)
+        #     patches = self.input_processor(patches)
+        # elif method == "window":
+        #     patch_size = int(self.image_size // n_patches)
+        #     strides = int(patch_size)
+        #     samples = self.input_processor(images)
+        #     patches = torch.nn.functional.unfold(samples, kernel_size=patch_size, stride=strides)
+        #     patches = patches.transpose(1, 2).contiguous().view(-1, 3, patch_size, patch_size)
+        #     # TODO: add the bbox definition
+        #     bboxes = None
+        #     img_for_patch = None
+        # elif callable(method):
+        #     patches = method(images, n_patches)
+        #     patches = self.input_processor(patches)
+        #     # TODO: add the bbox definition
+        #     bboxes = None
+        #     img_for_patch = None
+        # else:
+        #     raise ValueError("method must be either 'slic' or 'sam' or 'window'.")
 
-            # print(len(patches))
-            # model, dataset: Dataset, batch_size=128, resize=None, processor=None, device='cuda'
-            # patch_activations = utils._batch_inference(self.input_to_latent, patches, self.batch_size, self.image_size,
-            #     device=self.device)
+        # print(len(patches))
+        # model, dataset: Dataset, batch_size=128, resize=None, processor=None, device='cuda'
+        # patch_activations = utils._batch_inference(self.input_to_latent, patches, self.batch_size, self.image_size,
+        #     device=self.device)
 
-            # cache the result
+        # cache the result
+        # print('to here~~~~~~~~em done')
 
-            for patch_count_idx in range(len(patch_count_ls)):
-                if patch_count_for_compute_ls[patch_count_idx] == False:
-                    continue        
-                n_patches = patch_count_ls[patch_count_idx]
-                # cached_file_name = f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
-                cached_file_name = utils.obtain_cached_file_name(segmentation_method, model_name, method, n_patches, samples_hash, not_normalize=not_normalize, use_mask=use_mask)
-                if save_mask_bbox:
-                    patch_activations, img_for_patch, masks, bboxes = patch_emb_ls[patch_count_idx], img_per_batch_ls[patch_count_idx], masks_ls[patch_count_idx], bboxes_ls[patch_count_idx]
-                    utils.save((patch_activations, masks, bboxes, img_for_patch), cached_file_name)
-                    # return cached_img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
-                else:
-                    patch_activations, img_for_patch, bboxes = patch_emb_ls[patch_count_idx], img_per_batch_ls[patch_count_idx], bboxes_ls[patch_count_idx]
-                    utils.save((patch_activations, bboxes, img_for_patch), cached_file_name)
-                    # return img_idx_ls, image_embs, patch_activations, img_for_patch
+        for patch_count_idx in range(len(patch_count_ls)):
+            if patch_count_for_compute_ls[patch_count_idx] == False:
+                continue        
+            n_patches = patch_count_ls[patch_count_idx]
+            # cached_file_name = f"output/saved_patches_{method}_{n_patches}_{samples_hash}{'_not_normalize' if not_normalize else ''}{'_use_mask' if use_mask else ''}.pkl"
+            cached_file_name = utils.obtain_cached_file_name(segmentation_method, model_name, method, n_patches, samples_hash, not_normalize=not_normalize, use_mask=use_mask)
+            if save_mask_bbox:
+                patch_activations, img_for_patch, masks, bboxes = patch_emb_ls[patch_count_idx], img_per_batch_ls[patch_count_idx], masks_ls[patch_count_idx], bboxes_ls[patch_count_idx]
+                utils.save((patch_activations, masks, bboxes, img_for_patch), cached_file_name)
+                # return cached_img_idx_ls, image_embs, patch_activations, masks, bboxes, img_for_patch
+            else:
+                patch_activations, img_for_patch, bboxes = patch_emb_ls[patch_count_idx], img_per_batch_ls[patch_count_idx], bboxes_ls[patch_count_idx]
+                utils.save((patch_activations, bboxes, img_for_patch), cached_file_name)
+                # return img_idx_ls, image_embs, patch_activations, img_for_patch
         
         # if save_mask_bbox:
         return cached_img_idx_ls, image_embs, patch_emb_ls, masks_ls, bboxes_ls, img_per_batch_ls
@@ -2390,8 +2040,9 @@ def convert_samples_to_concepts_img(args, samples_hash, model, img_file_name_ls,
     # image_embs, patch_activations, masks, bboxes, img_for_patch
     # n_patches, images=None, method="slic", not_normalize=False
 
-    cl.img_concept = args.img_concept
+    
     res = cl.get_patches(args.segmentation_method, args.model_name, patch_count_ls, samples_hash, img_idx_ls=img_idx_ls, img_file_name_ls=img_file_name_ls, method="slic", compute_img_emb=True, save_mask_bbox=save_mask_bbox)
+
     
     return res
     
@@ -2425,6 +2076,9 @@ def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb, bbox_ls=N
     # img_per_patch_tensor = torch.tensor(img_per_patch_ls[0])
     # max_img_id = int(torch.max(img_per_patch_tensor).item())
     max_img_id = len(img_emb)
+
+    print(f"max_img_id{max_img_id}")
+    
     patch_emb_curr_img_ls = []
     transformed_bbox_ls = []
     for idx in tqdm(range(max_img_id)):
@@ -2434,6 +2088,8 @@ def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb, bbox_ls=N
             # if idx == 1 and sub_idx > 0:
             #     continue
             patch_emb = patch_emb_ls[sub_idx]
+            print(f"patch_emb{len(patch_emb)}")
+            
             if img_per_patch_ls is not None:
                 img_per_batch = img_per_patch_ls[sub_idx]
                 img_per_patch_tensor = torch.tensor(img_per_batch)
@@ -2457,7 +2113,16 @@ def reformat_patch_embeddings(patch_emb_ls, img_per_patch_ls, img_emb, bbox_ls=N
     return patch_emb_curr_img_ls, transformed_bbox_ls
 
 
-       
+
+def safe_raw_processor(images):
+    try:
+        return raw_processor(images=images, return_tensors="pt")["pixel_values"]
+    except Exception as e:
+        print(f"Error processing images: {e}")
+        return None
+
+
+
 
 # def determine_overlapped_bboxes(bboxes_ls):
     
